@@ -64,7 +64,6 @@
  */
 import {
   BASE_HEADER_SLOT_KEYS,
-  BETTER_SIDEBAR_PANEL,
   DOCKKIT_SLIDERS,
   PLUGIN_PAGE_FROST_RULE,
   panelBlurRule,
@@ -76,9 +75,7 @@ function panelFragments(): PanelFragments {
     // Consequence 2: nothing to promote. The panel resolves against the page on
     // its own here, so the pre-0.1.7 lift is pure downside.
     promotion: '',
-    blur:
-      panelBlurRule(DOCKKIT_SLIDERS) +
-      panelBlurRule(BETTER_SIDEBAR_PANEL),
+    blur: panelBlurRule(DOCKKIT_SLIDERS),
   }
 }
 

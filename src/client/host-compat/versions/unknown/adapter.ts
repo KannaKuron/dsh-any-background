@@ -19,7 +19,6 @@
  */
 import {
   BASE_HEADER_SLOT_KEYS,
-  BETTER_SIDEBAR_PANEL,
   DOCKKIT_SLIDERS,
   PANEL_FULLSCREEN,
   PANEL_WRAPPER,
@@ -38,11 +37,10 @@ function panelFragments(): PanelFragments {
       `${wrapper}{position:fixed!important;z-index:26!important}` +
       `${PANEL_FULLSCREEN}${WITHOUT_DOCKKIT_FRAME}{z-index:40!important}`,
     // Each owner in its OWN block — a selector list is not forgiving, so bundling
-    // them would let one unparseable entry void the better-sidebar arm too.
+    // them would let one unparseable entry drop the other's frost too.
     blur:
       panelBlurRule(DOCKKIT_SLIDERS) +
-      panelBlurRule(wrapper) +
-      panelBlurRule(BETTER_SIDEBAR_PANEL),
+      panelBlurRule(wrapper),
   }
 }
 

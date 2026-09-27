@@ -5,7 +5,6 @@ import { saveConfig } from '../../rpc'
 import { applyCustomTokens, applySettingsOverrides, setPartBlur, applyViewCards, applyTrajectoryOverrides, applyPanelOverrides, applyProduced, applyHeaderPopovers } from '../../wallpaper'
 import { LiveSlider } from '../LiveSlider'
 import { CanvasIcon, SidebarIcon, ChatIcon, GearIcon, TextIcon, TrajectoryIcon, InputIcon, PanelIcon } from '../icons'
-import { useBetterSidebar } from '../../env'
 
 interface PartDef {
   labelKey: string
@@ -17,9 +16,10 @@ interface PartDef {
   isChat?: boolean
   /** Trajectory view: tint opacity + blur over the whole view surface. */
   isTrajectory?: boolean
-  /** dsh-better-sidebar bottom workbench panel: opacity + blur. */
+  /** The host's own right Sidebar column: opacity + blur. */
   isPanel?: boolean
-  /** Highlighter code blocks + produced chips: opacity + blur. */
+  /** Produced/highlight surfaces — code blocks, inline code, produced chips and
+   *  the dsh-better-sidebar workbench: opacity + blur. */
   isProduced?: boolean
   /** Header popovers (Agent Team panel + background-job list): opacity + blur. */
   isHeader?: boolean
@@ -35,7 +35,7 @@ const PARTS: PartDef[] = [
   { isTrajectory: true, labelKey: 'uiTrajectory', Icon: TrajectoryIcon },
   { isProduced: true, labelKey: 'uiProduced', Icon: TextIcon },
   { isHeader: true, labelKey: 'uiHeader', Icon: PanelIcon },
-  { isPanel: true, labelKey: 'uiPanelRegion', Icon: PanelIcon },
+  { isPanel: true, labelKey: 'uiPanelNative', Icon: PanelIcon },
 ]
 
 export function InterfacePage({ p }: { p: ThemeSectionProps }) {
@@ -46,14 +46,9 @@ export function InterfacePage({ p }: { p: ThemeSectionProps }) {
   // values from before the change (while the interface itself already moved).
   const metaRev = useStore((s: ThemeStoreState) => s.metaRev)
   void metaRev
-  // The panel row is always present, but its identity follows the host:
-  //   · native (right Sidebar) — "右方侧边栏", the slider pair drives the
-  //     host's own `[data-sidebar-right-panel]` surface tokens;
-  //   · dsh-better-sidebar installed — "bettersidebar", the same pair takes
-  //     over that plugin's bottom workbench panel as well. The verdict is
-  //     sticky (see env.ts), so the label flips at most once per session and
-  //     useBetterSidebar re-renders this page when it does.
-  const hasBetterSidebar = useBetterSidebar()
+  // The panel row owns the host's own right Sidebar only. The dsh-better-sidebar
+  // workbench used to ride this row too, but it is an artifact viewer, not a page
+  // column, so since 0.3.2 it belongs to the produced row below (PRODUCED_RULE).
 
   return (
     <>
@@ -67,9 +62,7 @@ export function InterfacePage({ p }: { p: ThemeSectionProps }) {
         {PARTS.map((part, i) => {
           const { labelKey, Icon, isSettings, isChat, isTrajectory, isPanel, isProduced, isHeader } = part
           const opKey = part.opKey
-          // The panel row's name follows the host: native right Sidebar without
-          // better-sidebar, that plugin's workbench with it.
-          const label = isPanel ? t(hasBetterSidebar ? 'uiPanelRegion' : 'uiPanelNative') : t(labelKey)
+          const label = t(labelKey)
           // Homepage parts (bg/sidebar/card/input) bind to their own part only;
           // the settings panel (isSettings) binds exclusively to the 'settings'
           // part (--dsh-any-blur-settings / --dsh-any-bg-settings-surface) and
@@ -78,9 +71,9 @@ export function InterfacePage({ p }: { p: ThemeSectionProps }) {
           // opacities. The chat region (isChat) and the trajectory view
           // (isTrajectory) own their own blur keys plus their own tint
           // opacities; the header row (isHeader) owns the 'header' blur key and
-          // cfg.headerOpacity; the panel row (isPanel — native right Sidebar or
-          // the better-sidebar workbench, per the label) owns the 'panel' blur
-          // key and cfg.panelOpacity. Every homepage opKey is also a PartBlurs
+          // cfg.headerOpacity; the panel row (isPanel, the host's own right
+          // Sidebar column) owns the 'panel' blur key and cfg.panelOpacity.
+          // Every homepage opKey is also a PartBlurs
           // key (input included), so the shared blur slider dereferences it
           // directly.
           const blurKey: keyof PartBlurs = isChat ? 'chat' : isTrajectory ? 'trajectory' : isSettings ? 'settings' : isPanel ? 'panel' : isProduced ? 'produced' : isHeader ? 'header' : opKey!

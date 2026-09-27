@@ -23,7 +23,6 @@
  */
 import {
   BASE_HEADER_SLOT_KEYS,
-  BETTER_SIDEBAR_PANEL,
   PANEL_FULLSCREEN,
   PANEL_WRAPPER,
   PLUGIN_PAGE_FROST_RULE,
@@ -72,9 +71,7 @@ function panelFragments(): PanelFragments {
     promotion:
       `${PANEL_WRAPPER}{position:fixed!important;z-index:26!important}` +
       `${PANEL_FULLSCREEN}{z-index:40!important}`,
-    blur:
-      panelBlurRule(PANEL_WRAPPER) +
-      panelBlurRule(BETTER_SIDEBAR_PANEL),
+    blur: panelBlurRule(PANEL_WRAPPER),
   }
 }
 

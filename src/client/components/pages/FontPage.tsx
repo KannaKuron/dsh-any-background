@@ -4,7 +4,6 @@ import type { PartBlurs, PartStrokes, StrokeConfig, ThemeStoreState, ThemeSectio
 import { cfg, rStrokes } from '../../state'
 import { saveConfig, uploadRefusalText } from '../../rpc'
 import { setPartStroke } from '../../wallpaper'
-import { useBetterSidebar } from '../../env'
 import { LiveSlider } from '../LiveSlider'
 import {
   CanvasIcon, SidebarIcon, ChatIcon, GearIcon, TextIcon, TrajectoryIcon,
@@ -25,8 +24,6 @@ interface PartDef {
   key: keyof PartBlurs
   labelKey: string
   Icon: ComponentType<{ size?: number }>
-  /** Third-party surface (dsh-better-sidebar), hidden when that plugin is absent. */
-  needsSidebar?: boolean
 }
 
 const PARTS: PartDef[] = [
@@ -39,7 +36,7 @@ const PARTS: PartDef[] = [
   { key: 'trajectory', labelKey: 'uiTrajectory', Icon: TrajectoryIcon },
   { key: 'produced', labelKey: 'uiProduced', Icon: TextIcon },
   { key: 'header', labelKey: 'uiHeader', Icon: PanelIcon },
-  { key: 'panel', labelKey: 'uiPanelRegion', Icon: PanelIcon, needsSidebar: true },
+  { key: 'panel', labelKey: 'uiPanelNative', Icon: PanelIcon },
 ]
 
 const COLOR_KEYS: Array<StrokeConfig['color']> = ['auto', 'gray', 'black', 'white', 'theme', 'custom']
@@ -63,7 +60,6 @@ function dotStyle(key: StrokeConfig['color'], s: StrokeConfig): CSSProperties {
 
 export function FontPage({ p, notify }: { p: ThemeSectionProps; notify: (msg: string, ok?: boolean) => void }) {
   const { t, setFont, removeFont, setFontEnabled, setStrokes, useStore } = p
-  const hasBetterSidebar = useBetterSidebar()
   const fileRef = useRef<HTMLInputElement>(null)
 
   // cfg is the source of truth; the local copies exist because nothing else
@@ -180,7 +176,7 @@ export function FontPage({ p, notify }: { p: ThemeSectionProps; notify: (msg: st
         <p className="dab-hint" style={{ marginBottom: 14 }}>{t('strokeHint')}</p>
 
         <div className="dab-grid-parts">
-          {PARTS.filter(part => !(part.needsSidebar && !hasBetterSidebar)).map((part, i) => {
+          {PARTS.map((part, i) => {
             const s = strokes[part.key]
             return (
               <section key={part.key} className="dab-card dab-card-hover dab-rise" style={{ '--d': i + 3 } as CSSProperties}>

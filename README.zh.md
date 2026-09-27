@@ -4,7 +4,7 @@
   <a href="https://www.npmjs.com/package/dsh-any-background"><img alt="npm 版本" src="https://img.shields.io/npm/v/dsh-any-background?color=4d6bfe"></a>
   <a href="https://www.npmjs.com/package/dsh-any-background"><img alt="npm 月下载量" src="https://img.shields.io/npm/dm/dsh-any-background?color=4d6bfe"></a>
   <a href="https://github.com/Tkingxiao/dsh-any-background/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/npm/l/dsh-any-background?color=4d6bfe"></a>
-  <a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="支持的 DSH 版本：0.1.5-rc.2 ~ 0.1.7-rc.1" src="https://img.shields.io/badge/DSH-0.1.5--rc.2%20~%200.1.7--rc.1-4d6bfe" /></a>
+  <a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="支持的 DSH 版本：0.1.5-rc.2 ~ <0.2.0" src="https://img.shields.io/badge/DSH-0.1.5--rc.2%20~%20%3C0.2.0-4d6bfe" /></a>
   <a href="https://github.com/topics/dsh-better-sidebar"><img alt="插件生态：GitHub topic dsh-better-sidebar" src="https://img.shields.io/badge/%E6%8F%92%E4%BB%B6%E7%94%9F%E6%80%81-topic%20dsh--better--sidebar-4d6bfe" /></a><br /><br />
   <a href="https://github.com/Tkingxiao/dsh-any-background"><img src="https://img.shields.io/github/stars/Tkingxiao/dsh-any-background?style=social" alt="GitHub stars"></a>
   <a href="https://dsh.directory/plugins/tkingxiao/dsh-any-background"><img src="https://dsh.directory/badges/listed.svg" alt="dsh.directory listed"></a>
@@ -12,7 +12,7 @@
 
 [English](README.md) | 中文
 
-一个 **DeepSeek Harness** 外观插件：自定义主题色、背景壁纸（图片 / 视频 / 算法动态生成），以及逐表面的透明度与模糊度控制。兼容 **DSH 0.1.5-rc.2 ~ 0.1.7-rc.1**（官方右侧栏「主题」卡片等界面按宿主是否提供右侧栏注册表扩展点自动启用，缺失时静默跳过）。
+一个 **DeepSeek Harness** 外观插件：自定义主题色、背景壁纸（图片 / 视频 / 算法动态生成），以及逐表面的透明度与模糊度控制。兼容 **DSH 0.1.5-rc.2 起、0.2.0 之前的整条 0.1.7 线**（官方右侧栏「主题」卡片等界面按宿主是否提供右侧栏注册表扩展点自动启用，缺失时静默跳过）。
 
 ---
 
@@ -91,6 +91,17 @@
 
 ## 更新日志（只保留最新两个版本）
 
+### v0.3.2（产出物表面全量绑定，0.1.7-rc.2 恢复加载）
+
+- **产出物滑块现在覆盖 0.1.7 渲染的每一件产物**：工具调用详情卡片（`[data-inspect]`，见 `ToolDetails.module.css`）、事件行（`[data-turn-trigger]`，含 hover 底色）、diff 块（`[data-diff]`）、变更文件卡片（`[data-changed-files]` —— 根、标题按钮、文件计数瓷片各自取色）以及内联 `code` 的磨砂，此前全部由宿主按不透明绘制、我们这边没有任何绑定，所以「产出物/高亮内容」那对滑块对它们无效。现在每件都按自己的宿主 token 用 `color-mix(… var(--dsh-any-prod-pct))` 重新发色并共享同一层磨砂（compact 变体下的内联 `code` 除外——提示字号的文字上蒙一层磨砂只会糊）；描边组列出同一批表面，它们的文字不再继续继承对话框描边。
+- **代码卡片横幅恢复跟随主题而不是一块白斑**：0.1.7 把 ReadBlock / DiffBlock / CodeBlock 合到同一个 CodeCard，其头部取色链是 `--dsl-code-block-background` → `--dsw-alias-markdown-code-block`，而 `--dsl-code-block-banner-background-color` 只在 markdown 块的作用域里存在。我们的横幅那条分支仍先读旧的 `--dsw-alias-markdown-code-block-banner`，于是读取/diff 的头一直是一块忽略滑块的近白不透明条。现在这条分支照宿主自己的链发色，旧版那条用 `:not([data-code-block-banner])` 守住，两者不会同时认领同一个元素（现场用注入的 0.1.7 卡片实测：20% 时横幅与卡片融合；宿主确实使用该 token 的地方——diff 头部——两种颜色依然分明）。
+- **dsh-better-sidebar 的工作台面板改由产出物滑块接管**：`[data-dsh-bottom-panel]` 打开的就是对话行指向的产物，所以它随产出物表面一起淡化、磨砂，不再跟面板行走——面板行现在只代表宿主自己的右侧栏。它的不透明度用不了原地重发那招：面板内部每件表面（栏壳、标签条、卡片）各读一个层级 token，因此由产出物滑块写四个根变量去重定义这些 token，与面板行驱动原生面板的方式一致。两个设置页的标签与图标按这个划分改正。
+- **输入框磨砂归零后不再留下层叠上下文**：输入规则改由 `<html>` 上的 `dab-input-frost` class 把关，模糊滑块回到 0 时该 class 摘掉，没有被磨砂的输入框不再被 isolate（现场实测 `isolation`：`isolate → auto`）。宿主自己的卡片规则始终保留 `position: relative`（`.uV2eYG_card`），而分部位磨砂只在模糊非 0 时才补 position——因此「磨砂中的表面盖住其他插件的普通流内通知」这一种情况是磨砂本身带来的，不是残留，需要点名豁免那个通知。
+- **变更文件卡片只听一个滑块**：它的根节点取自 `--dsw-alias-bg-layer-1`，而这正是界面「卡片（选项面板）」不透明度在 `body` 上全局重映射的那个 token，于是产出物的 `color-mix` 把两层 alpha 乘在了一起——一张产物卡片同时听两个滑块。根节点现在改读由 `applyProduced` 写入、与面板行同源取自原始调色板的产出物专属变量 `--dsh-any-prod-layer-1`（现场实测：把卡片 alpha 压到 0.3 时卡片纹丝不动，产出物 alpha 依然能把它带到 0.2）。
+- **鼠标悬浮产生的预览窗补上了绑定**：悬浮一件产物会打开宿主 `ui-primitives/HoverCard`，它把卡片 portal 到 `document.body`，底色是组件级的字面量（`--dsw-hovercard-bg: #2C2C2E`，深浅主题同值）——既躲在任何树内重定义之外，也不归任何滑块管。它据此加入产出物组的磨砂/透明度/描边，锚点用这张卡片一定会写的行内属性 `--dsh-hover-preview-fade`；该标记只有 0.1.7 有（0.1.5 / 0.1.6 的这张卡片没有任何可区分属性），所以旧宿主只是不匹配，而不是用 `[class$="_card"]` 去捞——那会连输入框一起命中。同一个标记下其实有两种表面，各自按自己的取色淡出：普通卡片沿用宿主的组件级字面量 `--dsw-hovercard-bg: #2C2C2E`（宿主刻意让深浅主题都用它），而 `preview` 变体改从主题表面 `--dsw-alias-bg-layer-1` 取色，因此读产出物滑块的原始层级变量——两者都去 mix 那个字面量会把一张浅色预览窗染成深色（实测：浅色主题下变成 `rgb(44,44,46)`）。
+- **antd 的确认弹窗不再被当成设置面板**：`SETTINGS_PANEL_SEL` 原先认定「带 `aria-labelledby` 的 `aria-modal` 对话框」只有设置面板一个，但宿主的 antd `Modal`——「删除会话」确认框等——同样带齐这三个属性，于是它继承了设置表面色、设置磨砂、面板行写入的整组 `--dsw-alias-bg-layer-*` 重定义，以及设置描边分组。选择器现在额外要求 `ui-settings-general/SettingsRoot.tsx` 加在自己对话框元素上的哈希类 `css.panel`，这一点从 `0.1.5-rc.2` 到 `0.1.7-rc.1` 完全一致；antd 渲染的是 `ant-modal-*` 连字符类名，不可能含它。现场实测：收紧后真设置面板仍然命中，而完整的 antd 弹窗子树（container、close、header、body、footer、两个按钮）在所有 `dsh-any*` 样式表上命中数为 0——收紧前它是命中的。所以当前构建里确认按钮若仍有位移，来源已经不在本插件。
+- **`0.1.7-rc.2` 重新可加载，其后的 0.1.7 构建也一并放行**：从 rc.1 起，peer 检查里少列一个版本号的代价就是插件在宿主上根本不启动，而 rc.2 恰好没在表里（issue #20）。七个 `@deepseek-ai/dsh-*` peer、`engines.dsh` 与 `dsh.compatibility.dsh` 现在都以 `|| 0.1.7-rc.2 || >=0.1.7-alpha.1 <0.2.0-alpha.0` 收尾，整条 0.1.7 线以及之后的 0.1.x 不必每出一个构建就回来改一次清单。这条统括范围必须这样写：单写 `>=0.1.7` 一个预发布构建都匹配不到（semver 只允许比较符自带同一个 `[major,minor,patch]` 元组时去和预发布版比较），上界也只能写 `<0.2.0-alpha.0` 而不是 `<0.2.0`，否则 `0.2.0-alpha.1` 会漏进来。每个判定都拿宿主自带的那份 `semver`（rc.1 运行时里的 7.8.5）按门禁同款的 `{includePrerelease: true}` 复跑过；统括只往后放，更早的 `0.1.5-rc` / `0.1.6-alpha` 依旧逐构建枚举，对没核对过的版本线放开范围等于声明一份没核对过的兼容。但清单决定的只是「加载」：适配表未动，rc.2 宿主仍按补丁行规则落进现有的 0.1.7 目录（判定是 `line` 而非 `exact`），而 rc.2 自己那份 diff 里的表面漂移（菜单底色改由 `--dsw-menu-surface-fill` 提供、变更文件卡片的单文件变体）属于还需要一台真跑 rc.2 的机器来度量的后续项。
+
 ### v0.3.1（版本适配隔离：每个宿主版本一个目录）
 
 - **前置版本检测层**：宿主 release 的探测与渠道归类收进 `src/host-compat/`（Node 半侧读取进程所由以启动的那份 `@deepseek-ai/dsh/package.json`，即 `ctx.profileContext.installAnchor`，拿不到时再退回启动器 `homes/<ver>` 旁边 `versions/<ver>` 里的同名清单与目录名，经 `read` RPC 下发），客户端侧由 `src/client/host-compat/` 承接判定、广播变更，并在判定到达时重切静态样式表。原本散落在 `src/client/host.ts` 与各消费方里的版本判定统一到这一层，该模块已删除。
@@ -161,7 +172,7 @@ pnpm dsh web
 
 ## 兼容性
 
-- **[`dsh web`](https://github.com/deepseek-ai/deepseek-harness) 0.1.5-rc.2 ~ 0.1.7-rc.1** — 兼容范围覆盖全部七个已发布版本（`0.1.6-alpha.2` 与 `0.1.7-alpha.1`、`0.1.7-alpha.2` 已实测验证，`0.1.7-rc.1` 以逐包比对核对）；`engines.dsh`、`@deepseek-ai/dsh-*` 的 `peerDependencies` 与 `dsh.compatibility.dshReleases` 都逐一列出——从 `0.1.7-rc.1` 起宿主自己就会按 peer 列表拒绝加载，列不列决定插件能不能跑，不是写给人看的说明。宿主版本在运行时由 Node 半侧解析，依赖特定宿主版本渠道的功能（右侧栏面板模糊、官方侧栏「主题」卡片）只在对应宿主结构存在时启用，其余功能在整个范围内表现一致。
+- **[`dsh web`](https://github.com/deepseek-ai/deepseek-harness) 0.1.5-rc.2 ~ <0.2.0** — `engines.dsh`、七个 `@deepseek-ai/dsh-*` 的 `peerDependencies` 与 `dsh.compatibility.dsh` 先逐一列出本插件核对过的 `0.1.5-rc` 与 `0.1.6-alpha` 各构建，再以 `>=0.1.7-alpha.1 <0.2.0-alpha.0` 收尾，因此 0.1.7 起到 0.2.0 之前的每个版本都会加载（`0.1.7-rc.1`、`0.1.7-rc.2` 以逐包比对 tag 核对，它们之前的构建是实测过的）。从 `0.1.7-rc.1` 起宿主自己强制这份 peer 列表——范围没写到的版本会在模块被导入之前整个禁用——所以列不列决定插件能不能跑，它不是写给人看的说明；`dsh.compatibility.dshReleases` 里则记录哪些构建真的核对过。宿主版本在运行时由 Node 半侧解析，依赖特定宿主版本渠道的功能（右侧栏面板模糊、官方侧栏「主题」卡片）只在对应宿主结构存在时启用，其余功能在整个范围内表现一致。
 - **版本适配隔离**：release 由 Node 半侧从进程自身那份 `@deepseek-ai/dsh/package.json` 读出（客户端上下文不暴露版本；`ctx.profileContext.installAnchor` 指不到时退回启动器的磁盘布局），经 `read` RPC 下发后只由前置适配层路由——`src/host-compat/` 负责探测与渠道归类，`src/client/host-compat/versions/` 下**每个版本一个目录**（`v0-1-5-rc-2-3` / `v0-1-6-alpha-1-2` / `v0-1-7-alpha-1-2-rc-1` / `unknown`），各自描述该版本的面板力学与头部槽位键。底码只向适配层提问（引导页表面归谁、模糊挂在哪一层），不比较版本字符串。同一补丁行内的其它构建（`0.1.6-alpha.4` 之于核对基准 `0.1.6-alpha.2`）用该行的档位；整条补丁行都不在已核对范围内才收边取最近的一档并写日志。只有解析不到 release 时归入 `unknown`，回退到按 DOM 形状探测（`:has()` 双臂）而不是猜一个版本；适配新宿主 = 新增一个版本目录并在注册表登记。
 - **[DSHA](https://github.com/DSH-APP/DSHA)** — DeepSeek Harness 安卓启动器（免 ROOT、免 Termux）。其包内 dsh 为 `0.1.5-rc.2`，落在兼容范围内；移动端界面由 `dsh-web-mobile` 提供。
 - **[deepseek-harness-desktop](https://github.com/anywhere-labs/deepseek-harness-desktop)** — 支持

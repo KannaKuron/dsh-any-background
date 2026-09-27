@@ -1,4 +1,4 @@
-import { PANEL_SURFACES } from './host-compat/versions/shared'
+import { PANEL_SURFACES, BETTER_SIDEBAR_PANEL } from './host-compat/versions/shared'
 import { HEADER_POPOVER_ATTR } from './header-tag'
 import { rWp, rWpImage, rWpVideo, rBgState, rVideoBgState, rBl, rWop, rOps, rSop, rStrokes, rColor, rHasColor, rBlurs, rBgMode, rChatTextOpacity, rTrajectoryOpacity, rPanelOpacity, rProducedOpacity, rHeaderOpacity, rScheme, rColorScheme, rSchemeOverride, cfg, setWpUrl, rBgDark, setBgDark, disposeVideoObjectUrl } from './state'
 import type { BackgroundType, GeneratedBgParams, PartOpacities, PartBlurs, StrokeConfig } from './types'
@@ -257,12 +257,22 @@ function applyCustomTokensNow(ops: PartOpacities): void {
 }
 
 // ── Settings panel opacity ─────────────────────────────────────────────────────
-// The settings modal is the only aria-modal dialog identifying itself with
-// aria-labelledby, so this selector scopes translucency to the settings panel.
+// Scoped by the settings dialog's own identity, not just its ARIA shape: every
+// aria-modal dialog that labels itself would otherwise be claimed here, and a
+// third-party confirm dialog does exactly that (an antd `Modal` carries
+// `role="dialog"`, `aria-modal="true"` AND `aria-labelledby` pointing at its
+// title). Claimed by mistake, it inherits the settings surface + blur + layer
+// re-scope + settings text stroke — which reads as a mis-adapted dialog with a
+// shifted button label rather than as the plugin's own look.
+// The discriminator is the hashed `_panel` class: SettingsRoot.tsx renders
+// `<div className={css.panel} role="dialog" aria-modal="true"
+// aria-labelledby={titleId}>` identically on 0.1.5-rc.2 / 0.1.6-alpha.2 /
+// 0.1.7-alpha.2 / 0.1.7-rc.1, while antd's classes are all `ant-*` (hyphens, so
+// `_panel` can never match one).
 // The surface (--dsw-alias-bg-layer-2) is re-emitted with an alpha through a
 // plugin-owned variable so the panel keeps its color while fading.
 
-const SETTINGS_PANEL_SEL = '[role="dialog"][aria-modal="true"][aria-labelledby]'
+export const SETTINGS_PANEL_SEL = '[role="dialog"][aria-modal="true"][aria-labelledby][class*="_panel"]'
 export const SETTINGS_STYLE_RULE =
   `${SETTINGS_PANEL_SEL}{` +
   `background:var(--dsh-any-bg-settings-surface,var(--dsw-alias-bg-layer-2));` +
@@ -352,6 +362,10 @@ export const POPOVER_BLUR_RULE =
 // button-floating-hover tokens: the settings panel's own controls (slider
 // thumbs, .dab-btn, segmented thumb) are painted from those same tokens, so
 // tinting them would bleach the panel's own UI.
+// Set on <html> while the input blur is non-zero, to gate INPUT_BLUR_RULE's
+// composer-card rules below (see the paint-order note there).
+const INPUT_FROST_CLASS = 'dab-input-frost'
+
 export const INPUT_BLUR_RULE =
   // The composer capsule must NOT carry backdrop-filter itself: it is an
   // ancestor of the in-place popovers (permission / command / model lists),
@@ -362,8 +376,19 @@ export const INPUT_BLUR_RULE =
   // content AND the popovers, leaving the popovers free to sample the
   // wallpaper and follow the card slider only. (Same rule the part-blurs
   // follow: backdrop-filter never goes directly on a host part.)
-  '[data-composer-card]{position:relative;isolation:isolate}' +
-  '[data-composer-card]::before{' +
+  //
+  // The price of that underlay is `position:relative` + `isolation:isolate`, and
+  // both are PAINT ORDER: a positioned element — or any element that establishes a
+  // stacking context, which `isolation` does — is painted in the positioned layer,
+  // above other plugins' in-flow or earlier-in-tree notices that overlap the same
+  // spot. That is the "输入框的 z 层级太高，挡住了通知" report, and it cannot be
+  // fixed away while a frost is requested: a frost needs an isolated containing
+  // block, and no CSS construct provides one that paints *below* in-flow content.
+  // What can be fixed is paying the cost for nothing, so both declarations are
+  // gated on the blur being non-zero — at 0 the capsule keeps the host's own
+  // layering and the plugin competes for nothing.
+  `.${INPUT_FROST_CLASS} [data-composer-card]{position:relative;isolation:isolate}` +
+  `.${INPUT_FROST_CLASS} [data-composer-card]::before{` +
   'content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;' +
   '-webkit-backdrop-filter:var(--dsh-any-input-blur,none);' +
   'backdrop-filter:var(--dsh-any-input-blur,none)}' +
@@ -373,8 +398,13 @@ export const INPUT_BLUR_RULE =
   '[data-cordis-panel]{--dsw-specific-menu:var(--dsh-any-op-menu-cordis)!important}'
 
 function applyInputBlur(px: number): void {
-  if (px > 0) document.documentElement.style.setProperty('--dsh-any-input-blur', `blur(${px}px)`)
-  else document.documentElement.style.removeProperty('--dsh-any-input-blur')
+  const root = document.documentElement
+  // The frost gate: with the slider at 0 the plugin must not add any layering to
+  // the composer at all (see INPUT_BLUR_RULE).
+  if (px > 0) root.classList.add(INPUT_FROST_CLASS)
+  else root.classList.remove(INPUT_FROST_CLASS)
+  if (px > 0) root.style.setProperty('--dsh-any-input-blur', `blur(${px}px)`)
+  else root.style.removeProperty('--dsh-any-input-blur')
 }
 
 // Narrow-viewport hosts render a fixed session-title bar (.dsh-mobile-app-header)
@@ -711,10 +741,11 @@ export const PRODUCED_RULE =
   // --dsw-alias-markdown-code-block surface as code blocks, so they receive
   // both blur and alpha modulation below.
   //
-  // ChangedFiles: the card ROOT ([data-changed-files]) has NO background of its
-  // own — backdrop-filter there would frost straight through to the wallpaper
-  // and make the transparent file-list rows look broken. Blur is applied only
-  // to the header <button> (the one filled surface), keeping the effect local.
+  // ChangedFiles ([data-changed-files]): from 0.1.7 the card ROOT carries its own
+  // fill (--dsw-alias-bg-layer-1), so the frost belongs on the root — one frost
+  // per card. The header button and its tile are faded by alpha alone (see the
+  // --changes-fill arms below); frosting them too would blur the already frosted
+  // root behind them.
   //
   // SearchBlock ([data-search]) and WebBlock ([data-web]) both paint from
   // --dsw-alias-markdown-code-block (their .block root), so they join the
@@ -726,17 +757,59 @@ export const PRODUCED_RULE =
   // `<hash>_<localName>` (e.g. `o3BgMG_ioCard`), so `[class*="_ioCard"]` is
   // stable across builds while a bare `.ioCard` would never match.
   //
-  // NOTE: inline `code` chips (:not(pre)>code) are intentionally EXCLUDED from
-  // the backdrop-filter rule. They are display:inline-flex (or display:inline in
-  // compact contexts), and applying backdrop-filter on inline/inline-flex elements
-  // causes compositing-layer promotion that can expand or misalign the chip in
-  // Chromium/Electron. The alpha fade (color-mix below) still applies to them.
+  // The three surfaces 0.1.7 added to the produced family all fill from
+  // --dsw-alias-markdown-code-block too: DiffBlock ([data-diff]), the tool-result
+  // detail block (ToolDetails .root, marked [data-inspect] when it offers the
+  // inspector) and the turn-event row ([data-turn-trigger]).
+  //
+  // Inline `code` chips (:not(pre)>code) ride the frost as well: they are the one
+  // produced surface a reader sees mid-sentence, and leaving them opaque while the
+  // block behind them faded made them look pinned to the wallpaper instead of part
+  // of it. They are display:inline-flex, so the promotion risk is real — the
+  // compact markdown variant ([data-markdown-variant="compact"], used by the
+  // reasoning rows) resets display to `inline`, where a frost would fragment
+  // across line boxes, so that context opts back out.
+  //
+  // The hover preview window ([style*="--dsh-hover-preview-fade"]) is the artifact
+  // a produced surface opens: `ui-primitives/HoverCard` portals its card to
+  // document.body, so no in-tree re-scope can reach it and it painted its own
+  // literal `--dsw-hovercard-bg: #2C2C2E` (identical in both themes, deliberately a
+  // component variable and not a theme token — see HoverCard.module.css) untouched
+  // by any slider. That inline custom property is the only stable marker it has:
+  // the class is hashed per build, and on 0.1.5-rc.2 / 0.1.6-alpha.2 the card
+  // element carries no attribute at all, so those hosts simply never match it here
+  // rather than being caught by a `[class$="_card"]` that would also hit the
+  // composer and the changed-files card.
   '[data-code-block-content] pre,[data-code-block-banner],[data-composer-chip],' +
-  '[data-changed-files]>button:first-child,' +
-  '[data-terminal],[data-read],[data-context-injection-body],' +
-  '[data-search],[data-web],[class*="_ioCard"]{' +
+  '[data-changed-files],' +
+  '[data-terminal],[data-read],[data-diff],[data-context-injection-body],' +
+  '[data-search],[data-web],[class*="_ioCard"],' +
+  '[data-inspect],[data-turn-trigger],' +
+  '[style*="--dsh-hover-preview-fade"],' +
+  ':not(pre)>code{' +
   '-webkit-backdrop-filter:var(--dsh-any-blur-prod,none);' +
   'backdrop-filter:var(--dsh-any-blur-prod,none)}' +
+  '[data-markdown-variant="compact"] :not(pre)>code{' +
+  '-webkit-backdrop-filter:none;backdrop-filter:none}' +
+  // ── dsh-better-sidebar workbench [data-dsh-bottom-panel] ──────────────────
+  // The third-party bottom panel is a produced surface by nature — it opens the
+  // artifact a conversation row points at — so since 0.3.2 the produced pair owns
+  // it instead of the panel row, which is now just the host's own right Sidebar.
+  // Unlike a code block it does not paint one token: every surface inside it
+  // (pane chrome, tab bar, cards) reads a layer token, so its alpha cannot ride
+  // `--dsh-any-prod-pct` and re-emit in place; the four tokens are re-scoped from
+  // root variables `applyProduced` writes at the slider's alpha, exactly the way
+  // PANEL_TOKEN_RULE does for the native panel. Kept in its own block, not merged
+  // into the selector list above, because an engine that drops one of these
+  // declarations must not take the code-block frost down with it.
+  `${BETTER_SIDEBAR_PANEL}{` +
+  '-webkit-backdrop-filter:var(--dsh-any-blur-prod,none);' +
+  'backdrop-filter:var(--dsh-any-blur-prod,none)}' +
+  `${BETTER_SIDEBAR_PANEL}{` +
+  '--dsw-alias-bg-base:var(--dsh-any-prod-panel-bg-base);' +
+  '--dsw-alias-bg-layer-1:var(--dsh-any-prod-panel-layer-1);' +
+  '--dsw-alias-bg-layer-2:var(--dsh-any-prod-panel-layer-2);' +
+  '--dsw-alias-bg-layer-3:var(--dsh-any-prod-panel-layer-3)}' +
   // ── Alpha (color-mix) ──────────────────────────────────────────────────────
   // Guarded: without color-mix support the host look stays untouched instead
   // of resolving the surface color to an invalid value.
@@ -751,6 +824,16 @@ export const PRODUCED_RULE =
   'background-color:color-mix(in srgb,var(--dsl-code-block-background,var(--dsw-alias-markdown-code-block,transparent)) var(--dsh-any-prod-pct,100%),transparent)!important}' +
   '.md-code-block [data-code-block-banner]{' +
   'background-color:color-mix(in srgb,var(--dsl-code-block-banner-background-color,var(--dsw-alias-markdown-code-block-banner,transparent)) var(--dsh-any-prod-pct,100%),transparent)!important}' +
+  // Banners outside the markdown block: 0.1.7 moved ReadBlock / DiffBlock /
+  // CodeBlock onto one shared CodeCard, whose `.header` fills from
+  // `--dsl-code-block-banner-background-color` when a markdown block is in scope
+  // and otherwise from `--dsl-code-block-background` → `--dsw-alias-markdown-code-block`
+  // (CodeCard.module.css:16). Re-emitting that same chain is what keeps the banner
+  // themed: the older `--dsw-alias-markdown-code-block-banner` token below is a
+  // near-white value 0.1.7 no longer paints here, so forcing it made every read /
+  // diff header a pale slab that ignored the produced alpha.
+  '[data-code-block-banner]{' +
+  'background-color:color-mix(in srgb,var(--dsl-code-block-banner-background-color,var(--dsl-code-block-background,var(--dsw-alias-markdown-code-block,transparent))) var(--dsh-any-prod-pct,100%),transparent)!important}' +
   '[data-code-block-content]{' +
   '--shiki-background:color-mix(in srgb,var(--dsw-alias-markdown-code-block,var(--dsl-code-block-background,transparent)) var(--dsh-any-prod-pct,100%),transparent)}' +
   // Inline markdown `code` chips: the host's own selector shape, so the chip
@@ -766,25 +849,71 @@ export const PRODUCED_RULE =
   '[data-terminal]{' +
   'background-color:color-mix(in srgb,var(--dsw-alias-markdown-code-block,transparent) var(--dsh-any-prod-pct,100%),transparent)!important}' +
   '[data-terminal] button{background-color:transparent!important}' +
-  // ── ReadBlock [data-read] ─────────────────────────────────────────────────
-  // Root: background: var(--dsw-alias-markdown-code-block).
-  // First child div is the banner, using --dsw-alias-markdown-code-block-banner
-  // (a distinct, usually lighter token). Both faded with their own tokens.
-  '[data-read]{' +
+  // ── ReadBlock [data-read] / DiffBlock [data-diff] ────────────────────────
+  // Both are CodeCards from 0.1.7: the root fills from
+  // --dsw-alias-markdown-code-block and the banner carries
+  // [data-code-block-banner], handled by the shared banner arm above. The guarded
+  // rule below only serves 0.1.6, where ReadBlock's first child WAS a banner
+  // painted from --dsw-alias-markdown-code-block-banner and carried no marker.
+  '[data-read],[data-diff]{' +
   'background-color:color-mix(in srgb,var(--dsw-alias-markdown-code-block,transparent) var(--dsh-any-prod-pct,100%),transparent)!important}' +
-  '[data-read]>div:first-child{' +
+  '[data-read]>div:first-child:not([data-code-block-banner]),' +
+  '[data-diff]>div:first-child:not([data-code-block-banner]){' +
   'background-color:color-mix(in srgb,var(--dsw-alias-markdown-code-block-banner,transparent) var(--dsh-any-prod-pct,100%),transparent)!important}' +
   // ── ContextInjectionRow body [data-context-injection-body] ────────────────
   // The .body element uses --dsw-alias-markdown-code-block (same as code blocks).
   '[data-context-injection-body]{' +
   'background-color:color-mix(in srgb,var(--dsw-alias-markdown-code-block,transparent) var(--dsh-any-prod-pct,100%),transparent)!important}' +
+  // ── ToolDetails [data-inspect] / turn-event row [data-turn-trigger] ───────
+  // The two produced surfaces 0.1.7 added outside the code-block family, both
+  // filling from --dsw-alias-markdown-code-block (ToolDetails.module.css,
+  // TurnTriggerNodeView.module.css). The turn row swaps to
+  // --dsw-alias-interactive-bg-hover on hover, so that state fades too — otherwise
+  // the row snaps back to opaque exactly when the pointer reaches it.
+  '[data-inspect],[data-turn-trigger]{' +
+  'background-color:color-mix(in srgb,var(--dsw-alias-markdown-code-block,transparent) var(--dsh-any-prod-pct,100%),transparent)!important}' +
+  '[data-turn-trigger]:hover{' +
+  'background-color:color-mix(in srgb,var(--dsw-alias-interactive-bg-hover,transparent) var(--dsh-any-prod-pct,100%),transparent)!important}' +
   // ── ChangedFiles card [data-changed-files] ────────────────────────────────
-  // Card root has no background; the only filled surface is the header <button>
-  // (first child), which paints from --changes-fill (neutral-50 light /
-  // neutral-850 dark). That banner is NOT bound to the slider — its color stays
-  // at the host default so it reads clearly against the transparent list rows.
-  // Blur is still applied on the header button (see backdrop-filter selector
-  // above), so the wallpaper frosts through it when the blur slider is raised.
+  // 0.1.7 gave the card a root fill (--dsw-alias-bg-layer-1) plus a header and a
+  // file-count tile that both paint from --changes-fill (neutral-50 light /
+  // neutral-850 dark, redefined under body[data-ds-dark-theme]). All three follow
+  // the produced slider now: with the root opaque and the file rows transparent,
+  // the card read as a hard white plate no matter where the slider sat. The tile
+  // is alpha-only because the root behind it already frosts.
+  //
+  // The root cannot fade with color-mix the way its siblings do: --dsw-alias-bg-layer-1
+  // is the token the interface "card" (option-panel) slider re-emits globally on
+  // `body`, so mixing on top of it multiplied two alphas and the artifact card
+  // answered to both sliders. It reads the produced slider's own re-emit of the
+  // RAW token instead — one surface, one slider.
+  '[data-changed-files]{' +
+  'background-color:var(--dsh-any-prod-layer-1,var(--dsw-alias-bg-layer-1,transparent))!important}' +
+  '[data-changed-files]>button:first-child{' +
+  'background-color:color-mix(in srgb,var(--changes-fill,transparent) var(--dsh-any-prod-pct,100%),transparent)!important}' +
+  '[data-changed-files]>button:first-child:hover{' +
+  'background-color:color-mix(in srgb,var(--changes-hover,var(--changes-fill,transparent)) var(--dsh-any-prod-pct,100%),transparent)!important}' +
+  '[data-changed-files]>button:first-child>span:first-child{' +
+  'background-color:color-mix(in srgb,var(--changes-fill,transparent) var(--dsh-any-prod-pct,100%),transparent)!important}' +
+  // ── Hover preview window [style*="--dsh-hover-preview-fade"] ───────────────
+  // See the frost list above for why this is the marker. Two surfaces live under
+  // that one attribute, and they do NOT paint from the same place:
+  //   · the plain card — `.card` in HoverCard.module.css — keeps its component
+  //     literal `--dsw-hovercard-bg: #2C2C2E` (dark in BOTH themes by the host's
+  //     own choice), so mixing on that token fades the color the host uses.
+  //   · the `preview` variant (`.preview`, what ChangedFiles opens) repaints from
+  //     --dsw-alias-bg-layer-1, i.e. the THEME surface, and never redefines the
+  //     literal. Mixing on --dsw-hovercard-bg there would replace a light themed
+  //     card with the dark one — measured: the preview came out
+  //     rgb(44,44,46) over a light theme. It reads the produced slider's raw
+  //     layer-1 instead, the same single-slider route the changed-files card uses.
+  // The fallback keeps the host's own color if that variable has not been written
+  // yet; it is the card-slider remapped token there, which is the pre-existing host
+  // look, not a second alpha.
+  '[style*="--dsh-hover-preview-fade"]{' +
+  'background-color:color-mix(in srgb,var(--dsw-hovercard-bg,#2c2c2e) var(--dsh-any-prod-pct,100%),transparent)!important}' +
+  '[style*="--dsh-hover-preview-fade"][class*="_preview"]{' +
+  'background-color:var(--dsh-any-prod-layer-1,var(--dsw-alias-bg-layer-1,transparent))!important}' +
   // ── SearchBlock [data-search] ─────────────────────────────────────────────
   // Root (.block): background: var(--dsw-alias-markdown-code-block).
   // Header (.header): background: var(--dsw-alias-markdown-code-block-banner).
@@ -826,7 +955,8 @@ export const PRODUCED_RULE =
 //                Being a DIRECT rule it also shields those surfaces from the
 //                inherited chat stroke — with produced width 0 the reset is
 //                exactly the exemption shiki multi-color text needs.
-//   panel      → the dsh-better-sidebar workbench surfaces
+//   panel      → the host's own right Sidebar column (the dsh-better-sidebar
+//                workbench sits in the produced group above, since 0.3.2)
 //
 // Global exemptions: SVG glyphs (host icons are paths, but paint-order is
 // inherited and would subtly alter stroked-and-filled icon rendering) and
@@ -856,10 +986,17 @@ export const STROKE_RULE = [
   // direct exemption, just like the other produced surfaces.
   // The expanded IN/OUT card joins by CSS-Module class shape ([class*="_ioCard"],
   // see PRODUCED_RULE) — same surface, same exemption.
+  // [data-diff] / [data-inspect] / [data-turn-trigger] join with the same PRODUCED_RULE
+  // group: without a direct rule here their text would keep inheriting the chat
+  // stroke while every other produced surface obeyed its own slider.
   `[data-code-block-content] pre,[data-code-block-content],[data-code-block-banner],[data-composer-chip],:not(pre)>code,` +
-  `[data-changed-files],[data-terminal],[data-read],[data-context-injection-body],[data-search],[data-web],[class*="_ioCard"]` +
+  `[data-changed-files],[data-terminal],[data-read],[data-diff],[data-inspect],[data-turn-trigger],[data-context-injection-body],[data-search],[data-web],[class*="_ioCard"],[style*="--dsh-hover-preview-fade"]` +
+  // The workbench joined this group with 0.3.2 (PRODUCED_RULE), so its text does
+  // too — otherwise the produced stroke would cover every artifact except the one
+  // that opens them.
+  `,${BETTER_SIDEBAR_PANEL}` +
   `{-webkit-text-stroke:var(--dsh-any-stroke-produced-w,0px) var(--dsh-any-stroke-produced-c,transparent);paint-order:stroke fill}`,
-  // workbench panel
+  // the host's own right Sidebar column
   `${PANEL_SURFACES}{-webkit-text-stroke:var(--dsh-any-stroke-panel-w,0px) var(--dsh-any-stroke-panel-c,transparent);paint-order:stroke fill}`,
   // header popovers — the same surfaces as HEADER_POPOVER_RULE, unpadded: a
   // stroke never competed with the card group's backdrop-filter, so raising
@@ -1064,14 +1201,13 @@ function removeFontFace(): void {
   fontStyleEl = null
 }
 
-/** The host's own default colors for the panel layer tokens, used when the
- *  plugin has no palette (no picked color, no wallpaper verdict, no forced
- *  scheme). Without these the panel's re-scope would resolve to invalid vars
- *  and the panel would have no background — reading the host's resolved value
- *  keeps the panel opaque by default and lets the slider retint it like every
- *  other homepage part. Reads from the live `:root` so a custom host skin or
+/** The four layer slots a panel-wide token re-scope owns — both the variable
+ *  names to write and the shape the token source comes back in. */
+interface LayerVarNames { base: string; layer1: string; layer2: string; layer3: string }
+
+/** The host's own defaults, read from the live `:root` so a custom host skin or
  *  theme override wins. */
-function readHostLayerTokens(): { base: string; layer1: string; layer2: string; layer3: string } | null {
+function readHostLayerTokens(): LayerVarNames | null {
   if (typeof getComputedStyle === 'undefined') return null
   const root = document.documentElement
   const cs = getComputedStyle(root)
@@ -1083,44 +1219,66 @@ function readHostLayerTokens(): { base: string; layer1: string; layer2: string; 
   return { base, layer1, layer2, layer3 }
 }
 
-export function applyPanelOverrides(op: number): void {
-  // Palette-keyed fast path: a picked color / forced scheme builds a
-  // token set in `genTokens` and remaps the panel via the re-scope rule.
-  const tokens = paletteTokens()
+/** The host's own right Sidebar (`PANEL_TOKEN_RULE`) reads this set. */
+const PANEL_LAYER_VARS: LayerVarNames = {
+  base: '--dsh-any-panel-bg-base',
+  layer1: '--dsh-any-panel-layer-1',
+  layer2: '--dsh-any-panel-layer-2',
+  layer3: '--dsh-any-panel-layer-3',
+}
+
+/** The dsh-better-sidebar workbench (see `PRODUCED_RULE`) reads this set, so the
+ *  two panels can follow two different sliders. */
+const PROD_PANEL_LAYER_VARS: LayerVarNames = {
+  base: '--dsh-any-prod-panel-bg-base',
+  layer1: '--dsh-any-prod-panel-layer-1',
+  layer2: '--dsh-any-prod-panel-layer-2',
+  layer3: '--dsh-any-prod-panel-layer-3',
+}
+/** The changed-files card root needs one token only — the RAW `--dsw-alias-bg-layer-1`
+ *  at the produced alpha. It cannot mix on the token itself the way the other
+ *  produced surfaces do, because that name is what the interface card slider
+ *  re-emits globally on `body` (OPACITY_TOKEN_GROUPS), so mixing on it would bind
+ *  one artifact card to two sliders. */
+const PROD_LAYER_VARS: Partial<LayerVarNames> = { layer1: '--dsh-any-prod-layer-1' }
+
+const LAYER_KEYS = ['base', 'layer1', 'layer2', 'layer3'] as const
+
+/** Re-emit the four layer colors at `op` alpha into `names`. The source is the
+ *  plugin palette when a picked color / forced scheme owns the theme, otherwise
+ *  the host's own resolved tokens — a slider only ever supplies the alpha, so the
+ *  colors keep following whichever theme or host skin is active.
+ *
+ *  Every pass writes SOMETHING: the re-scope rules live in the always-emitted
+ *  stylesheet, and a `var()` naming an unwritten variable makes the surface
+ *  guaranteed-invalid, which drops its background entirely rather than leaving it
+ *  on the host default. */
+function writeLayerVars(names: Partial<LayerVarNames>, op: number): void {
+  const palette = paletteTokens()
+  const src: Partial<LayerVarNames> = palette !== null
+    ? {
+        base: palette['--dsw-alias-bg-base'],
+        layer1: palette['--dsw-alias-bg-layer-1'],
+        layer2: palette['--dsw-alias-bg-layer-2'],
+        layer3: palette['--dsw-alias-bg-layer-3'],
+      }
+    : readHostLayerTokens() ?? {}
   const root = document.documentElement
-  if (tokens !== null) {
-    const base = tokens['--dsw-alias-bg-base']
-    const layer1 = tokens['--dsw-alias-bg-layer-1']
-    const layer2 = tokens['--dsw-alias-bg-layer-2']
-    const layer3 = tokens['--dsw-alias-bg-layer-3']
-    if (base !== undefined) root.style.setProperty('--dsh-any-panel-bg-base', toRgba(base, op))
-    if (layer1 !== undefined) root.style.setProperty('--dsh-any-panel-layer-1', toRgba(layer1, op))
-    if (layer2 !== undefined) root.style.setProperty('--dsh-any-panel-layer-2', toRgba(layer2, op))
-    if (layer3 !== undefined) root.style.setProperty('--dsh-any-panel-layer-3', toRgba(layer3, op))
+  if (LAYER_KEYS.every(k => !src[k])) {
+    // Pre-mount, or neither source has shipped the tokens yet: nothing to retint,
+    // so park the surfaces on transparent until the next apply.
+    for (const k of LAYER_KEYS) if (names[k]) root.style.setProperty(names[k]!, 'transparent')
     return
   }
-  // No-palette fallback: read the host's own resolved values and re-emit them
-  // with the slider's alpha. Without this the panel's re-scope (always in the
-  // stylesheet) would point at unwritten vars and the panel would either keep
-  // the host's default (no opacity control) or — with the `position: fixed`
-  // promotion — fall through to a transparent surface. Reading the live host
-  // tokens makes the slider work in every state.
-  const host = readHostLayerTokens()
-  if (host === null) {
-    // Pre-mount or the host hasn't shipped the tokens yet: nothing to retint,
-    // but the re-scope rule still needs SOMETHING — point at the existing
-    // tokens via a transparent fallback so the panel surfaces stay on the
-    // host palette until the next apply.
-    root.style.setProperty('--dsh-any-panel-bg-base', 'transparent')
-    root.style.setProperty('--dsh-any-panel-layer-1', 'transparent')
-    root.style.setProperty('--dsh-any-panel-layer-2', 'transparent')
-    root.style.setProperty('--dsh-any-panel-layer-3', 'transparent')
-    return
+  for (const k of LAYER_KEYS) {
+    const name = names[k]
+    const v = src[k]
+    if (name && v) root.style.setProperty(name, toRgba(v, op))
   }
-  if (host.base) root.style.setProperty('--dsh-any-panel-bg-base', toRgba(host.base, op))
-  if (host.layer1) root.style.setProperty('--dsh-any-panel-layer-1', toRgba(host.layer1, op))
-  if (host.layer2) root.style.setProperty('--dsh-any-panel-layer-2', toRgba(host.layer2, op))
-  if (host.layer3) root.style.setProperty('--dsh-any-panel-layer-3', toRgba(host.layer3, op))
+}
+
+export function applyPanelOverrides(op: number): void {
+  writeLayerVars(PANEL_LAYER_VARS, op)
 }
 
 function applyPanelBlur(px: number): void {
@@ -1526,11 +1684,15 @@ export function applyPartBlurs(blurs: PartBlurs): void {
 }
 
 /** Produced/artifact surfaces (conversation code blocks + their banner +
- *  composer chips): re-write the root blur and the alpha percentage consumed by
- *  PRODUCED_RULE. The percentage is an alpha for the surface's OWN host color —
- *  1 (100%) reproduces the untouched host look and lowering it fades exactly
- *  that color out — so no palette sampling is involved and the surfaces keep
- *  following the active theme/wallpaper color on their own. */
+ *  inline code chips + composer chips + the dsh-better-sidebar workbench):
+ *  re-write the root blur and the alpha percentage consumed by PRODUCED_RULE. The
+ *  percentage is an alpha for the surface's OWN host color — 1 (100%) reproduces
+ *  the untouched host look and lowering it fades exactly that color out — so no
+ *  palette sampling is involved and the surfaces keep following the active
+ *  theme/wallpaper color on their own. Two surfaces are the exception: the
+ *  workbench reads a whole set of layer tokens rather than one color, and the
+ *  changed-files card reads a token the card slider owns globally — both take their
+ *  alpha from `writeLayerVars` instead of mixing on the live token. */
 export function applyProduced(): void {
   const px = rBlurs().produced
   const root = document.documentElement
@@ -1540,6 +1702,8 @@ export function applyProduced(): void {
   if (opacity < 0) opacity = 0
   if (opacity > 1) opacity = 1
   root.style.setProperty('--dsh-any-prod-pct', `${Math.round(opacity * 100)}%`)
+  writeLayerVars(PROD_PANEL_LAYER_VARS, opacity)
+  writeLayerVars(PROD_LAYER_VARS, opacity)
 }
 
 /** Live per-part blur update during slider drag (no full re-apply). */
@@ -2299,10 +2463,13 @@ export function teardownWp(): void {
   document.documentElement.style.removeProperty('--dsh-any-blur-card-panels')
   document.documentElement.style.removeProperty('--dsh-any-input-blur')
   document.documentElement.style.removeProperty('--dsh-any-part-blur-global')
-  document.documentElement.style.removeProperty('--dsh-any-panel-bg-base')
-  document.documentElement.style.removeProperty('--dsh-any-panel-layer-1')
-  document.documentElement.style.removeProperty('--dsh-any-panel-layer-2')
-  document.documentElement.style.removeProperty('--dsh-any-panel-layer-3')
+  for (const set of [PANEL_LAYER_VARS, PROD_PANEL_LAYER_VARS, PROD_LAYER_VARS]) {
+    for (const k of LAYER_KEYS) {
+      const name = set[k]
+      if (name) document.documentElement.style.removeProperty(name)
+    }
+  }
+  document.documentElement.classList.remove(INPUT_FROST_CLASS)
   document.documentElement.style.removeProperty('--dsh-any-blur-panel')
   document.documentElement.style.removeProperty('--dsh-any-blur-prod')
   document.documentElement.style.removeProperty('--dsh-any-prod-pct')

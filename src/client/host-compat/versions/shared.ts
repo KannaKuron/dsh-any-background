@@ -40,11 +40,15 @@ export const PANEL_FULLSCREEN = '[data-sidebar-right-panel="fullscreen"]'
 export const DOCKKIT_SLIDERS =
   '[data-sidebar-right-panel] [data-dockkit-host="dock"],[data-sidebar-right-panel] [data-dockkit-empty]'
 
-/** The third-party workbench panel, one element on every release. */
+/** The third-party workbench panel, one element on every release. Owned by the
+ *  PRODUCED slider (0.3.2): a conversation artifact that happens to open in a
+ *  panel, not a page column — so it fades and frosts with the produced surfaces. */
 export const BETTER_SIDEBAR_PANEL = '[data-dsh-bottom-panel]'
 
-/** Every surface the panel opacity slider owns. Layout-neutral token re-scope. */
-export const PANEL_SURFACES = `${BETTER_SIDEBAR_PANEL},${PANEL_WRAPPER}`
+/** Every surface the panel opacity slider owns — the host's own right Sidebar.
+ *  Layout-neutral token re-scope. (The dsh-better-sidebar workbench used to be
+ *  listed here; it moved to the produced group, see `PRODUCED_RULE`.) */
+export const PANEL_SURFACES = PANEL_WRAPPER
 
 /** DOM-shape test for "this is NOT a 0.1.7-style frame". Used ONLY by the
  *  unresolved adapter, where the DOM is the authority because the release is not. */

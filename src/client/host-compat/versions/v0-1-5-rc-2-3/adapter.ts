@@ -23,7 +23,6 @@
  */
 import {
   BASE_HEADER_SLOT_KEYS,
-  BETTER_SIDEBAR_PANEL,
   PANEL_FULLSCREEN,
   PANEL_WRAPPER,
   panelBlurRule,
@@ -39,11 +38,7 @@ function panelFragments(): PanelFragments {
     promotion:
       `${PANEL_WRAPPER}{position:fixed!important;z-index:26!important}` +
       `${PANEL_FULLSCREEN}{z-index:40!important}`,
-    // No selector-list bundling across the two owners: an engine that cannot
-    // parse one entry drops only that block.
-    blur:
-      panelBlurRule(PANEL_WRAPPER) +
-      panelBlurRule(BETTER_SIDEBAR_PANEL),
+    blur: panelBlurRule(PANEL_WRAPPER),
   }
 }
 

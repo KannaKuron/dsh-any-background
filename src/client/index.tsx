@@ -10,7 +10,7 @@ import type { Ctx, RpcResultLike, BoundActions, ThemeSectionProps, PartOpacities
 import { NS, zh, en } from './i18n'
 import { cfg, rHasColor, rColor, rWp, rWpImage, rWpVideo, rBgState, rVideoBgState, setWpUrl, setWpImageUrl, setWpVideoUrl, setWpVideoSnapshot, setBgState, adoptConfig, DEFAULT_CONFIG, setBgDark, rBgDark, rProfiles, rRotation, rSchedule, rScheme, rColorScheme, rSchemeOverride, currentAppearance, applyAppearance } from './state'
 import { RPC_CHANNEL, VIDEO_SERVE_URL, FONT_SERVE_URL, fontServeUrl, initRpc, saveConfig, flushSave, loadPersisted, persistWallpaper, persistVideo, persistConfig, uploadVideo, uploadFont, removeFont as rpcRemoveFont, rotationAdd, rotationRemove, rotationActivate, setVideoFromUrl as rpcSetVideoFromUrl } from './rpc'
-import { applyWp, teardownWp, applySettingsOverrides, applyPanelOverrides, applyStrokes, applyFontFace, watchParts, watchThemeResets, regenerateGeneratedBg, setBackgroundType, updateGeneratedBg, applyThemeColor, onGeneratedSnapshot, watchWallpaperDragQuality, clearThemeTokens, onVerdictApplied, onColorAdopted, LABEL_TOKENS } from './wallpaper'
+import { applyWp, teardownWp, applySettingsOverrides, applyPanelOverrides, applyStrokes, applyFontFace, watchParts, watchThemeResets, regenerateGeneratedBg, setBackgroundType, updateGeneratedBg, applyThemeColor, onGeneratedSnapshot, watchWallpaperDragQuality, clearThemeTokens, onVerdictApplied, onColorAdopted, LABEL_TOKENS, SETTINGS_PANEL_SEL } from './wallpaper'
 import { mountStaticStyles } from './host-compat/styles'
 import { genTokens, hslToHsv, hsvToHsl, extractWallpaperColor } from './utils/color'
 import { captureVideoSnapshot } from './utils/video'
@@ -1029,7 +1029,11 @@ export function apply(ctx: Ctx): void {
   // this section's nav text and swap its svg for the sun glyph.
   const navLabel = (): string => ctx.locale.bind(NS)('nav')
   const applyNavIcon = (): void => {
-    const panel = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"][aria-labelledby]')
+    // SETTINGS_PANEL_SEL rather than the ARIA shape: a confirm dialog is an
+    // aria-modal dialog with a labelledby too, and document order decides which one
+    // a loose query returns — so the glyph would go missing whenever that dialog
+    // happens to precede a re-mounted settings panel. Same anchor as the styles.
+    const panel = document.querySelector<HTMLElement>(SETTINGS_PANEL_SEL)
     const nav = panel?.querySelector('nav')
     if (!nav) return
     const target = navLabel()
@@ -1062,7 +1066,7 @@ export function apply(ctx: Ctx): void {
         for (const n of r.addedNodes) {
           if (n.nodeType !== 1) continue
           const el = n as Element
-          if (el.matches?.('[role="dialog"][aria-modal="true"][aria-labelledby]') || el.querySelector?.('[role="dialog"][aria-modal="true"][aria-labelledby]')) return true
+          if (el.matches?.(SETTINGS_PANEL_SEL) || el.querySelector?.(SETTINGS_PANEL_SEL)) return true
         }
         return false
       })

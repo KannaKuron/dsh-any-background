@@ -9,20 +9,19 @@
  * is currently collapsed must not hide the settings that govern it.
  */
 
-import { useSyncExternalStore } from 'react'
-
 /** Persistent container + surfaces dsh-better-sidebar mounts when loaded.
  *  `[data-dsh-better-sidebar]` is the plugin's host wrapper — always appended
  *  to document.body on mount — so it is the authoritative "plugin is loaded"
  *  signal and the body childList observer fires exactly when it appears. The
- *  panel surfaces we actually style are listed only as reinforcement: they are
- *  conditionally rendered (collapsed panels drop them), so they must never be
- *  the sole signal.
+ *  panel surfaces are listed only as reinforcement: they are conditionally
+ *  rendered (collapsed panels drop them), so they must never be the sole
+ *  signal.
  *
  *  `[data-sidebar-right-panel]` is deliberately ABSENT: on every host generation
  *  it marks the host's own right Sidebar (always present once a session opens),
- *  so counting it would make the better-sidebar verdict permanently true and the
- *  panel slider could never drop back to its native "右方侧边栏" identity. */
+ *  so counting it would make the better-sidebar verdict permanently true on any
+ *  host and mis-drive everything gated on it. */
+
 export const BETTER_SIDEBAR_MARKERS = [
   '[data-dsh-better-sidebar]',
   '[data-dsh-panel-host]',
@@ -48,11 +47,6 @@ function sync(): void {
     emit()
   }
   // Sticky on purpose: a collapsed/detached panel must not untick the verdict.
-}
-
-/** React hook: re-renders the caller when better-sidebar presence changes. */
-export function useBetterSidebar(): boolean {
-  return useSyncExternalStore(subscribe, rBetterSidebar)
 }
 
 /** Subscribe to verdict changes. */
