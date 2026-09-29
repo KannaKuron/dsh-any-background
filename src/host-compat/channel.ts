@@ -15,8 +15,13 @@
 /** Adapter channels the plugin ships an adapter for: a patch line plus its
  *  prerelease channel, so `0.1.5-rc.2` and a hypothetical `0.1.5-beta.1` are NOT
  *  the same answer. `unknown` is the "could not determine the release" bucket,
- *  not a release. */
-export type HostChannel = '0.1.5-rc' | '0.1.6-alpha' | '0.1.7-alpha' | 'unknown'
+ *  not a release.
+ *
+ *  `0.1.7-alpha` and `0.1.7-rc` share a patch line but not an answer: the menu
+ *  paint moved to `MenuSurface`'s own layer at `0.1.7-rc.2`, which is a fact about
+ *  the host's CSS that no amount of "same line" reasoning carries over. A line is
+ *  only as unified as its verified facts. */
+export type HostChannel = '0.1.5-rc' | '0.1.6-alpha' | '0.1.7-alpha' | '0.1.7-rc' | '0.2.0-rc' | 'unknown'
 
 /** A known channel — one that has a real adapter. */
 export type KnownChannel = Exclude<HostChannel, 'unknown'>
@@ -33,6 +38,9 @@ export interface SupportedRelease {
  *  were checked; several rows may share a `channel` when a newer build was
  *  verified as needing no change to that folder's adapter (as `0.1.7-rc.1` was) —
  *  a row then reports `exact` instead of `line`, and no new folder appears.
+ *  Rows may ALSO share a patch line while carrying different channels, which is
+ *  how a line says "the facts changed halfway through it" (`0.1.7-alpha.2` and
+ *  `0.1.7-rc.1` speak for `0.1.7-alpha`, `0.1.7-rc.2` opens `0.1.7-rc`).
  *  Adding an ADAPTER means adding a channel plus a folder in
  *  `client/host-compat/versions/`. */
 export const SUPPORTED_RELEASES: readonly SupportedRelease[] = [
@@ -40,6 +48,8 @@ export const SUPPORTED_RELEASES: readonly SupportedRelease[] = [
   { channel: '0.1.6-alpha', release: '0.1.6-alpha.2' },
   { channel: '0.1.7-alpha', release: '0.1.7-alpha.2' },
   { channel: '0.1.7-alpha', release: '0.1.7-rc.1' },
+  { channel: '0.1.7-rc', release: '0.1.7-rc.2' },
+  { channel: '0.2.0-rc', release: '0.2.0-rc.1' },
 ]
 
 /** How the chosen adapter relates to the release that was detected. Reported so a
@@ -150,9 +160,10 @@ export function classifyRelease(version: string | null): HostVerdict {
     // at `alpha.2`, and `line` exists precisely so an unverified build says so.
     const exact = sameLine.find(row => row.release === version)
     if (exact !== undefined) return { channel: exact.channel, match: 'exact' }
-    // A line may carry several verified builds (`0.1.7-alpha.2` and `0.1.7-rc.1`
-    // both speak for `0.1.7-alpha`), so take the highest row at or below the host:
-    // an unverified newer build gets the newest verification that precedes it, and
+    // A patch line may carry several verified builds AND several channels, so take
+    // the highest row at or below the host: an unverified newer build gets the
+    // newest verification that precedes it, whichever folder that was
+    // (`0.1.7-rc.3` → the `0.1.7-rc` facts checked at rc.2, not the alpha ones), and
     // one older than every row falls back to the line's first, since the folder's
     // facts were derived from that shape.
     const atOrBelow = sameLine.filter(row => cmp(row.parsed, host) <= 0)

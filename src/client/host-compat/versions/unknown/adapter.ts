@@ -23,6 +23,7 @@ import {
   PANEL_FULLSCREEN,
   PANEL_WRAPPER,
   PLUGIN_PAGE_FROST_RULE,
+  UNRESOLVED_MENU_SURFACE,
   panelBlurRule,
   WITHOUT_DOCKKIT_FRAME,
 } from '../shared'
@@ -54,6 +55,11 @@ export function createAdapter(host: HostInfo): HostAdapter {
     // `[data-plugin-panel]` prefix IS the test, so on a release with no plugin
     // manager the rule is simply inert. No `:has()` cost either.
     pluginPageRule: PLUGIN_PAGE_FROST_RULE,
+    // The menu arms cannot be DOM-gated the way the panel ones are — a fill token
+    // and a frost target are not testable on an element that is not open yet — so
+    // this takes the variant built to cost nothing on whichever line it turns out
+    // to be. See `UNRESOLVED_MENU_SURFACE`.
+    menus: UNRESOLVED_MENU_SURFACE,
     surface: {
       // Asserting `true` here would withdraw the plugin's sidebar page on a host
       // that may not have an appearance page of its own — a missing page is worse

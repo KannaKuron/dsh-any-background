@@ -2,8 +2,9 @@
  * The contract every per-version adapter folder implements.
  *
  * Business code reads THESE, never a release string. That is the isolation rule:
- * `0.1.5-rc` / `0.1.6-alpha` / `0.1.7-alpha` may appear inside `versions/` and in
- * the front-door detector, and nowhere else in the plugin. Adding a new DSH line
+ * `0.1.5-rc` / `0.1.6-alpha` / `0.1.7-alpha` / `0.1.7-rc` / `0.2.0-rc` may appear
+ * inside `versions/` and in the front-door detector, and nowhere else in the
+ * plugin. Adding a new DSH line
  * then means adding one folder and one registry row — no `if` scattered through
  * the styling code.
  *
@@ -36,6 +37,39 @@ export interface PanelFragments {
   readonly promotion: string
   /** The `backdrop-filter` declarations for every surface the panel slider owns. */
   readonly blur: string
+}
+
+/** What a release paints a SHARED MENU (dropdown / popover / suggestion list /
+ *  stat dialog) with, and where its frost belongs.
+ *
+ *  Two shapes are verified, and they differ in which element carries the paint:
+ *    · the menu element itself declares `background` + `backdrop-filter`, so the
+ *      plugin retints the element's token and filters the element.
+ *    · `ui-primitives/src/MenuSurface.tsx` leaves the element unpainted and draws
+ *      the fill plus the frost on a `z-index:-1` child layer instead. That layer's
+ *      own comment states why it exists: filtering only the background "keeps
+ *      nested menus and fixed overlays free of an ancestor backdrop root". Put a
+ *      `backdrop-filter` on the element anyway and the plugin adds exactly the
+ *      ancestor backdrop root the layer was built to avoid — and the fill token the
+ *      layer reads is no longer the one the element used to read.
+ *
+ *  Stated as facts rather than as a branch in the styling code because both halves
+ *  move together: which token a fill comes from, and whose job the frost is. */
+export interface MenuSurfaceFacts {
+  /** EVERY host custom property the plugin must declare with the menu's faded
+   *  color for the fade to land — the token a menu's fill is read from, which is
+   *  not always the one the element used to paint with. The consumer writes each of
+   *  them wherever it already writes a menu fill (the body-level alpha re-scope,
+   *  the header retint, the exempt pins), so one slider still produces one value and
+   *  every layer a menu can paint from follows it. */
+  readonly fillTokens: readonly string[]
+  /** The declaration that sets a menu set's frost to a given CSS value: filtering
+   *  the element where the element paints, re-declaring the host's menu-blur token
+   *  where a child layer does. Takes a VALUE rather than a variable name because two
+   *  consumers need it — the owning slider's `var(…)`, and the exempt surfaces'
+   *  `none`. A declaration, not a rule, so the selector lists stay with the surfaces
+   *  that own them and cannot drift out of sync. */
+  readonly frostDecl: (value: string) => string
 }
 
 /** What the host's own chrome gives us, as facts rather than as a version. */
@@ -75,4 +109,6 @@ export interface HostAdapter {
    *  cannot match; the UNRESOLVED adapter still ships it, because there the page's
    *  own attribute is the test and a missing page simply never matches. */
   readonly pluginPageRule: string
+  /** Where this release's shared menus get their fill and their frost. */
+  readonly menus: MenuSurfaceFacts
 }

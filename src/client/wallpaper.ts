@@ -1,4 +1,5 @@
-import { PANEL_SURFACES, BETTER_SIDEBAR_PANEL } from './host-compat/versions/shared'
+import { MENU_FILL_TOKEN, PANEL_SURFACES, BETTER_SIDEBAR_PANEL, elementFrostDecl } from './host-compat/versions/shared'
+import { hostAdapter } from './host-compat/capabilities'
 import { HEADER_POPOVER_ATTR } from './header-tag'
 import { rWp, rWpImage, rWpVideo, rBgState, rVideoBgState, rBl, rWop, rOps, rSop, rStrokes, rColor, rHasColor, rBlurs, rBgMode, rChatTextOpacity, rTrajectoryOpacity, rPanelOpacity, rProducedOpacity, rHeaderOpacity, rScheme, rColorScheme, rSchemeOverride, cfg, setWpUrl, rBgDark, setBgDark, disposeVideoObjectUrl } from './state'
 import type { BackgroundType, GeneratedBgParams, PartOpacities, PartBlurs, StrokeConfig } from './types'
@@ -76,7 +77,7 @@ export const LABEL_TOKENS = [
 // the layered bg/sidebar tokens. --dsw-specific-menu (dropdowns, slash-trigger
 // menu, model selector, popovers around the dialog) is owned by the card
 // slider; the Cordis panel shares that token but is re-scoped to the input
-// slider via INPUT_BLUR_RULE.
+// slider via inputBlurRule.
 //
 // `--dsw-alias-bg-base` IS the main-background surface: the AppFrame ground and
 // the conversation root that fills the center column both paint from it, which
@@ -201,7 +202,7 @@ function applyCustomTokensNow(ops: PartOpacities): void {
   }
   try {
     const forceDark = scheme === 'dark'
-    const key = `${h}|${s}|${l}|${verdict}|${scheme}|${hasColor}`
+    const key = `${h}|${s}|${l}|${verdict}|${scheme}|${hasColor}|${hostAdapter().menus.fillTokens.join(',')}`
     if (key !== baseTokenKey) {
       baseTokenKey = key
       // Drive the base-palette switch with a plugin-specific value so the
@@ -216,6 +217,20 @@ function applyCustomTokensNow(ops: PartOpacities): void {
       for (const [name, value] of Object.entries(tokens)) {
         const opVar = OPACITY_VARS[name]
         decls.push(`${name}:${opVar !== undefined ? `var(${opVar})` : value}!important`)
+      }
+      // A release that paints menus from a second token needs that name re-scoped
+      // too, or the menu would inherit the CARD alpha from `body` under one name and
+      // the host's own opaque value under the other — which is precisely how the
+      // opacity sliders went inert on 0.1.7-rc.2. Same variable, so one slider still
+      // writes one value. Guarded on the sampled color existing, because a `var()`
+      // naming an unset property is the guaranteed-invalid-value trap documented on
+      // `applyHeaderPopovers`.
+      if (tokens[MENU_FILL_TOKEN] !== undefined) {
+        const menuVar = OPACITY_VARS[MENU_FILL_TOKEN]
+        for (const name of hostAdapter().menus.fillTokens) {
+          if (name === MENU_FILL_TOKEN || tokens[name] !== undefined) continue
+          decls.push(`${name}:var(${menuVar})!important`)
+        }
       }
       ensureTokenStyle().textContent = `body{${decls.join(';')}}`
       // Drop inline tokens left by earlier builds so the stylesheet is the single source of truth.
@@ -241,12 +256,12 @@ function applyCustomTokensNow(ops: PartOpacities): void {
         root.style.setProperty(OPACITY_VARS[name], toRgba(surfaces[name]!, ops[g.part]))
       }
     }
-    // The Cordis panel keeps its own input-slider alpha (see INPUT_BLUR_RULE).
+    // The Cordis panel keeps its own input-slider alpha (see inputBlurRule).
     const menu = surfaces['--dsw-specific-menu']
     if (menu !== undefined) root.style.setProperty('--dsh-any-op-menu-cordis', toRgba(menu, ops.input))
     const bgKey = `${baseTokenKey}|${ops.bg}`
     if (bgKey !== lastBgKey) { lastBgKey = bgKey; applyPartOpacities(ops) }
-    // The exempt surfaces (EXEMPT_DEFAULT_RULE) point at the host's OWN token
+    // The exempt surfaces (exemptDefaultRule) point at the host's OWN token
     // values, sampled from :root here — so re-capture them whenever the palette
     // underneath changes. This is the one function every color/verdict/scheme
     // path funnels through.
@@ -310,10 +325,11 @@ export const SETTINGS_STYLE_RULE =
 //                    createPortal) and in-place (rendered where the React
 //                    subtree is — PermissionSelect keeps its `side="top"`
 //                    list inside the composer card).
-//   [role="listbox"]· the /model command panel (PopupSelectView) and the
-//                    @-trigger suggestion list (MenuView).  Both live
-//                    inside the composer card.  No other host element
-//                    uses role="listbox".
+//   [role="listbox"]· the /model command panel (PopupSelectView `.viewport`)
+//                    and the @-trigger suggestion list (MenuView `.viewport`)
+//                    — both the inner scroll box, not the card.  From
+//                    0.1.7-rc.2 the schedule ClockPicker adds one per column
+//                    (`ui-schedule/ClockPicker.tsx`), inside its own popover.
 //   [role="tree"]   · the subagent lineage tree (portaled to body) and
 //                    the sidebar's workspace browser (ui-workspace).  The
 //                    `body >` qualifier restricts this to the portaled
@@ -344,13 +360,59 @@ export const SETTINGS_STYLE_RULE =
 // The portaled menus (ModelSelect, Menu portal mode, stat-dialog,
 // SubagentHeaderLineage) are in body's stacking context and see the
 // wallpaper directly through the (transparent) AppFrame.
-export const POPOVER_BLUR_RULE =
-  `[role="menu"]:not([data-dockkit-tab-menu]),` +
+//
+// THE MENU ARM IS NOT HOST-AGNOSTIC and asks the release adapter for its
+// declaration (`MenuSurfaceFacts`): up to 0.1.7-rc.1 the `[role="menu"]` element
+// painted its own fill and frost (`Menu.module.css`, `ModelSelect.module.css` each
+// declared `background:var(--dsw-specific-menu)` plus
+// `backdrop-filter:var(--dsw-menu-backdrop-filter)` on that element), so filtering
+// it is the whole job. From 0.1.7-rc.2 that element carries no paint — a
+// `position:absolute;inset:0;z-index:-1` `.material` child of `MenuSurface` does,
+// and the host states why the root stays unfiltered ("Filtering only the background
+// keeps nested menus and fixed overlays free of an ancestor backdrop root or a new
+// fixed-position containing block"). So the plugin hands the value to the host's
+// blur token there instead of filtering an ancestor the host deliberately left clear.
+//
+// THE OTHER ARMS KEEP THE ELEMENT-LEVEL FROST, because the token cannot reach them:
+// custom properties travel downward, and on the layered releases the filtered layer
+// sits above or beside the matched element, never inside it — `[role="listbox"]` is
+// the MenuSurface's *child* viewport (PopupSelectView.tsx:153, MenuView.tsx:132; the
+// surface root carries no role), and `[role="tree"]` sits inside `.menu`, whose frost
+// lives on `.menu::before`. Setting the token on either is inert, so the element
+// filter is the only declaration that lands. Note these cards were never owned by the
+// card slider on either shape: the host frosts the card and our filter adds a frost
+// inside it, which is how the slider behaved at 0.1.7-rc.1 too.
+const CARD_BLUR_VAR = '--dsh-any-blur-card-panels'
+const POPOVER_MENU_SEL = `[role="menu"]:not([data-dockkit-tab-menu])`
+const POPOVER_OTHER_SEL =
   `[role="listbox"],` +
   `body > [role="tree"],` +
-  `body > [role="dialog"]:not([aria-modal="true"])` +
-  `{backdrop-filter:var(--dsh-any-blur-card-panels,none);` +
-  `-webkit-backdrop-filter:var(--dsh-any-blur-card-panels,none)}`
+  `body > [role="dialog"]:not([aria-modal="true"])`
+
+/** The frost declaration this release's menus want, driven by the named plugin var.
+ *  Every menu-shaped surface group asks through here, so the card group, the header
+ *  group and the exemptions can never disagree about which layer to paint. */
+function menuFrost(blurVar: string): string {
+  return hostAdapter().menus.frostDecl(`var(${blurVar},none)`)
+}
+
+/** Declare EVERY token this release's menus can paint their fill from with the same
+ *  value. One slider, one value, every layer reached — and a token the host does not
+ *  read is inert, so this is safe to emit on a line that only needs one.
+ *
+ *  Used for values that are guaranteed to resolve. Where the value is a `var()` the
+ *  caller must first confirm the variable it names is actually set: an undefined
+ *  custom property inside `background:var(…)` computes to the guaranteed-invalid
+ *  value and the surface goes fully transparent (see the notes on
+ *  `applyHeaderPopovers` and `applyExemptDefaults`). */
+function menuFillDecls(value: string): string {
+  return hostAdapter().menus.fillTokens.map(name => `${name}:${value}`).join(';')
+}
+
+export function popoverBlurRule(): string {
+  return `${POPOVER_MENU_SEL}{${menuFrost(CARD_BLUR_VAR)}}` +
+    `${POPOVER_OTHER_SEL}{${elementFrostDecl(`var(${CARD_BLUR_VAR},none)`)}}`
+}
 
 // Input/control surface blur. The composer card and the Cordis panel expose
 // stable host data attributes ([data-composer-card], [data-cordis-panel]), so
@@ -362,11 +424,11 @@ export const POPOVER_BLUR_RULE =
 // button-floating-hover tokens: the settings panel's own controls (slider
 // thumbs, .dab-btn, segmented thumb) are painted from those same tokens, so
 // tinting them would bleach the panel's own UI.
-// Set on <html> while the input blur is non-zero, to gate INPUT_BLUR_RULE's
+// Set on <html> while the input blur is non-zero, to gate `inputBlurRule`'s
 // composer-card rules below (see the paint-order note there).
 const INPUT_FROST_CLASS = 'dab-input-frost'
 
-export const INPUT_BLUR_RULE =
+export function inputBlurRule(): string {
   // The composer capsule must NOT carry backdrop-filter itself: it is an
   // ancestor of the in-place popovers (permission / command / model lists),
   // and a backdrop-filter on it would make it a backdrop root, trapping those
@@ -387,20 +449,25 @@ export const INPUT_BLUR_RULE =
   // What can be fixed is paying the cost for nothing, so both declarations are
   // gated on the blur being non-zero — at 0 the capsule keeps the host's own
   // layering and the plugin competes for nothing.
-  `.${INPUT_FROST_CLASS} [data-composer-card]{position:relative;isolation:isolate}` +
-  `.${INPUT_FROST_CLASS} [data-composer-card]::before{` +
-  'content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;' +
-  '-webkit-backdrop-filter:var(--dsh-any-input-blur,none);' +
-  'backdrop-filter:var(--dsh-any-input-blur,none)}' +
-  '[data-cordis-panel]{' +
-  '-webkit-backdrop-filter:var(--dsh-any-input-blur,none);' +
-  'backdrop-filter:var(--dsh-any-input-blur,none)}' +
-  '[data-cordis-panel]{--dsw-specific-menu:var(--dsh-any-op-menu-cordis)!important}'
+  return `.${INPUT_FROST_CLASS} [data-composer-card]{position:relative;isolation:isolate}` +
+    `.${INPUT_FROST_CLASS} [data-composer-card]::before{` +
+    'content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;' +
+    '-webkit-backdrop-filter:var(--dsh-any-input-blur,none);' +
+    'backdrop-filter:var(--dsh-any-input-blur,none)}' +
+    '[data-cordis-panel]{' +
+    '-webkit-backdrop-filter:var(--dsh-any-input-blur,none);' +
+    'backdrop-filter:var(--dsh-any-input-blur,none)}' +
+    // Every fill token, not just the one the Cordis panel's option boxes used to
+    // read: on a release where a menu paints from a layer token, scoping only the
+    // old name would let the box inherit the CARD alpha from `body` while the panel
+    // itself follows the input slider. Inert where the host reads one token.
+    `[data-cordis-panel]{${menuFillDecls('var(--dsh-any-op-menu-cordis)!important')}}`
+}
 
 function applyInputBlur(px: number): void {
   const root = document.documentElement
   // The frost gate: with the slider at 0 the plugin must not add any layering to
-  // the composer at all (see INPUT_BLUR_RULE).
+  // the composer at all (see inputBlurRule).
   if (px > 0) root.classList.add(INPUT_FROST_CLASS)
   else root.classList.remove(INPUT_FROST_CLASS)
   if (px > 0) root.style.setProperty('--dsh-any-input-blur', `blur(${px}px)`)
@@ -460,12 +527,12 @@ export const PANEL_TOKEN_RULE =
 // Session-header dropdowns that paint from --dsw-specific-menu, the same token
 // the card slider owns — so they used to follow the card opacity, and the
 // non-Menu ones never got any blur (they are `position: absolute` under their
-// own trigger, not portaled to body, so POPOVER_BLUR_RULE's
+// own trigger, not portaled to body, so popoverBlurRule's
 // `body > [role="dialog"]` selector misses them). This rule gives them their
 // own part: the header opacity slider retints the menu token for these
 // surfaces only, and the header blur slider frosts them.
 //
-// This rule is appended AFTER POPOVER_BLUR_RULE in the static stylesheet, and
+// This rule is appended AFTER popoverBlurRule in the static stylesheet, and
 // each selector carries equal-or-higher specificity — so listing a surface here
 // cleanly overrides the card group instead of fighting it. That matters for the
 // menu selectors below, which DO already match `[role="menu"]`: they are moved
@@ -555,10 +622,18 @@ const HEADER_SURFACES = [
  *  tagged arm to (0,2,0); the other three already qualify at (0,2,0)+. */
 const HEADER_SURFACES_PADDED = [`${HEADER_TAG_SELECTOR}[role]`, ...HEADER_SURFACES.slice(1)]
 
-export const HEADER_POPOVER_RULE =
-  `${HEADER_SURFACES_PADDED.join(',')}{` +
-  '-webkit-backdrop-filter:var(--dsh-any-blur-header,none);' +
-  'backdrop-filter:var(--dsh-any-blur-header,none)}'
+/** The header blur variable, and the rule that frosts the header's dropdown set.
+ *  The declaration comes from the same adapter answer as the card group's menu arm:
+ *  every surface in this set paints its skin from the host's own menu-blur token
+ *  (`SubagentHeaderLineage.module.css:120` uses a pseudo-element, the stat dialog and
+ *  goal bar use their own layer), so handing over the token reaches all of them on
+ *  both paint shapes, while filtering the element would install the ancestor
+ *  backdrop root each of those files documents avoiding. */
+const HEADER_BLUR_VAR = '--dsh-any-blur-header'
+
+export function headerPopoverRule(): string {
+  return `${HEADER_SURFACES_PADDED.join(',')}{${menuFrost(HEADER_BLUR_VAR)}}`
+}
 
 // ── Surfaces pinned against the sliders (theme color kept) ────────────────────
 // Two groups the user wants the sliders to leave alone, for two reasons:
@@ -582,7 +657,7 @@ export const HEADER_POPOVER_RULE =
 //    and it no-ops on engines without :has() (the menu simply keeps the card
 //    look rather than breaking).
 //
-// Both groups come AFTER POPOVER_BLUR_RULE / SETTINGS_STYLE_RULE so they win on
+// Both groups come AFTER popoverBlurRule / SETTINGS_STYLE_RULE so they win on
 // order.
 //
 // IMPORTANT — no self-referencing fallbacks. An earlier version wrote
@@ -596,17 +671,19 @@ export const HEADER_POPOVER_RULE =
 // going transparent.
 //
 // Only the parts that cannot go invalid stay static: the blur/stroke resets.
-export const EXEMPT_DEFAULT_RULE =
-  '[role="dialog"][aria-modal="true"]:not([aria-labelledby]){' +
-  'backdrop-filter:none;-webkit-backdrop-filter:none}' +
-  // Session row menus (approximated by their destructive row): no plugin blur,
-  // no plugin stroke. Its surface color is restored dynamically too.
-  '[role="menu"]:has([class*="_danger"]){' +
-  'backdrop-filter:none;-webkit-backdrop-filter:none;' +
-  '-webkit-text-stroke-width:0}'
+export function exemptDefaultRule(): string {
+  return '[role="dialog"][aria-modal="true"]:not([aria-labelledby]){' +
+    'backdrop-filter:none;-webkit-backdrop-filter:none}' +
+    // Session row menus (approximated by their destructive row): no plugin blur,
+    // no plugin stroke. Its surface color is restored dynamically too. The frost is
+    // cleared through the release's own menu arm — on a MenuSurface host
+    // `backdrop-filter:none` on the element would leave the child layer frosted.
+    `[role="menu"]:has([class*="_danger"]){${hostAdapter().menus.frostDecl('none')};` +
+    '-webkit-text-stroke-width:0}'
+}
 
 /** Selector the dynamic header token rule targets — the same set as the static
- *  HEADER_POPOVER_RULE above, so the two can never drift apart. */
+ *  headerPopoverRule above, so the two can never drift apart. */
 const HEADER_TOKEN_SELECTOR = HEADER_SURFACES_PADDED.join(',')
 
 /** Header-popover surfaces: retint the menu token and (re)write the blur.
@@ -619,22 +696,24 @@ export function applyHeaderPopovers(): void {
   else root.style.removeProperty('--dsh-any-blur-header')
   // Alpha: re-emit the live menu token's own color with the header opacity so
   // the popover keeps the host palette (and follows a picked color) while fading
-  // independently of the card slider.
+  // independently of the card slider. EVERY fill token the release paints menus
+  // from gets that same literal (`menuFillDecls`), because one header opacity has
+  // to mean one look whether the surface reads the old name or the layer's new one.
   //
-  // LITERAL, not a CSS var indirection — see the note on HEADER_POPOVER_RULE.
+  // LITERAL, not a CSS var indirection — see the note above on the header group.
   // The declaration goes into a dedicated sheet so the static rule stays
   // selector-only and a drag rewrites just this one text node.
   let opacity = rHeaderOpacity()
   if (opacity < 0) opacity = 0
   if (opacity > 1) opacity = 1
   const surfaces = paletteTokens() ?? readHostOpacityTokens()
-  const menu = surfaces?.['--dsw-specific-menu']
+  const menu = surfaces?.[MENU_FILL_TOKEN]
   const el = ensureHeaderStyle()
   // Nothing resolved: emit NO declaration rather than an invalid one, so the
   // surface keeps the re-scoped token value instead of going transparent.
   const css = menu === undefined
     ? ''
-    : `${HEADER_TOKEN_SELECTOR}{--dsw-specific-menu:${toRgba(menu, opacity)}}`
+    : `${HEADER_TOKEN_SELECTOR}{${menuFillDecls(toRgba(menu, opacity))}}`
   if (el.textContent !== css) el.textContent = css
 }
 
@@ -678,7 +757,12 @@ export function applyExemptDefaults(): void {
   add('--dsw-alias-bg-layer-1', source?.['--dsw-alias-bg-layer-1'])
   add('--dsw-alias-bg-layer-2', source?.['--dsw-alias-bg-layer-2'])
   add('--dsw-alias-bg-layer-3', source?.['--dsw-alias-bg-layer-3'])
-  add('--dsw-specific-menu', source?.['--dsw-specific-menu'])
+  // One sampled color, declared under EVERY name this release paints a menu from:
+  // a session-row menu on a `MenuSurface` host fades out of the layer token, and
+  // pinning only the old name would leave it faded while everything else around it
+  // went opaque. A name the host does not read is inert.
+  const menuColor = source?.[MENU_FILL_TOKEN]
+  for (const name of hostAdapter().menus.fillTokens) add(name, menuColor)
   if (decls.length === 0) {
     // Nothing resolved (pre-mount / host ships none): drop the pin rather than
     // emit an invalid one. The surfaces keep the re-scoped look.
@@ -945,8 +1029,8 @@ export const PRODUCED_RULE =
 // a static selector. Every other group binds to the same stable selectors the
 // blur rules already proved:
 //   settings   → the settings dialog (SETTINGS_PANEL_SEL)
-//   card       → the popover/menu surface set (POPOVER_BLUR_RULE's selectors)
-//   input      → composer card + cordis panel (INPUT_BLUR_RULE's markers), and
+//   card       → the popover/menu surface set (popoverBlurRule's selectors)
+//   input      → composer card + cordis panel (inputBlurRule's markers), and
 //                the native editors inside them (form controls do not inherit
 //                text properties from their container)
 //   chat       → the conversation message column ([data-chat-flow])
@@ -965,7 +1049,7 @@ export const PRODUCED_RULE =
 export const STROKE_RULE = [
   // settings
   `${SETTINGS_PANEL_SEL}{-webkit-text-stroke:var(--dsh-any-stroke-settings-w,0px) var(--dsh-any-stroke-settings-c,transparent);paint-order:stroke fill}`,
-  // card / popovers — selector set mirrors POPOVER_BLUR_RULE
+  // card / popovers — selector set mirrors popoverBlurRule
   `[role="menu"]:not([data-dockkit-tab-menu]),[role="listbox"],body>[role="tree"],body>[role="dialog"]:not([aria-modal="true"])` +
   `{-webkit-text-stroke:var(--dsh-any-stroke-card-w,0px) var(--dsh-any-stroke-card-c,transparent);paint-order:stroke fill}`,
   // input / controls — native editors need their own declaration
@@ -998,22 +1082,20 @@ export const STROKE_RULE = [
   `{-webkit-text-stroke:var(--dsh-any-stroke-produced-w,0px) var(--dsh-any-stroke-produced-c,transparent);paint-order:stroke fill}`,
   // the host's own right Sidebar column
   `${PANEL_SURFACES}{-webkit-text-stroke:var(--dsh-any-stroke-panel-w,0px) var(--dsh-any-stroke-panel-c,transparent);paint-order:stroke fill}`,
-  // header popovers — the same surfaces as HEADER_POPOVER_RULE, unpadded: a
+  // header popovers — the same surfaces as headerPopoverRule, unpadded: a
   // stroke never competed with the card group's backdrop-filter, so raising
   // specificity here would change which group wins and is not ours to decide.
   `${HEADER_SURFACES.join(',')}` +
   `{-webkit-text-stroke:var(--dsh-any-stroke-header-w,0px) var(--dsh-any-stroke-header-c,transparent);paint-order:stroke fill}`,
   // exemptions
   // Turn status / progress chrome — never owned by the "conversation text
-  // frame" (chat) stroke group. Both host generations render this signal on a
-  // `background-clip: text` surface, where a stroke is destructive rather than
-  // cosmetic: `-webkit-text-stroke` is INHERITED, so a rule on [data-chat-flow]
-  // reaches straight into these rows, and because their glyphs are painted by
-  // their own clipped gradient (`color: transparent`), the stroke repaints them
-  // as one flat stroke-coloured blob and the shimmer disappears.
+  // frame" (chat) stroke group, because `-webkit-text-stroke` is INHERITED: a rule
+  // on [data-chat-flow] reaches straight into these rows, and on every host
+  // generation that damage is not cosmetic.
   //
-  // Three selectors, one per surface actually observed, so both generations are
-  // covered without a version check:
+  // One selector per shape actually observed, so all generations are covered
+  // without a version check — an attribute a release does not emit simply matches
+  // nothing:
   //   · [role="status"] — 0.1.5/0.1.6 render the live line as a bare
   //     `.turnStatus` div under [data-chat-flow] (ChatView.module.css: brand-blue
   //     gradient + background-clip:text + -webkit-text-fill-color:transparent).
@@ -1022,18 +1104,29 @@ export const STROKE_RULE = [
   //   · [data-turn-process] — the turn-process disclosure row (0.1.6 and 0.1.7
   //     TurnProcessNodeView). Its label is elapsed-time / activity chrome
   //     ("深度求索中，用时40秒", "已搜索代码并协调子任务"), not conversation prose.
-  //   · [style*="--dsh-text-shimmer-spread"] / [data-text-shimmer] — the
-  //     TextShimmer primitive (0.1.7 ui-primitives) publishes that custom
-  //     property INLINE on its clipped element, so the substring match finds
-  //     every instance regardless of the hashed class name; the semantic
-  //     `data-text-shimmer` attribute (set only while the shimmer is active,
-  //     which is exactly when the clipped gradient exists) covers it too.
+  //   · [style*="--dsh-text-shimmer-spread"] / [data-text-shimmer] — the TextShimmer
+  //     primitive as 0.1.7 shipped it: it published that custom property INLINE on
+  //     the clipped element, so the substring match finds every instance whatever
+  //     the hashed class name is, and the semantic attribute marks exactly the
+  //     moments the gradient exists. Here the stroke is destructive: the glyphs are
+  //     painted by their own clipped gradient with a transparent fill, so a stroke
+  //     repaints them as one flat stroke-coloured blob and the shimmer disappears.
+  //   · [data-shimmer] — the SAME primitive, rewritten at 0.2.0-rc.1 (the old
+  //     attribute and the `--dsh-text-shimmer-spread` property are both gone from
+  //     that tag). Its paint moved off the text onto an absolutely-positioned
+  //     overlay (`.decoration` / `.sweep` / `.highlight`), so the failure mode
+  //     changed rather than disappeared: the real glyphs keep their own color, but
+  //     the inherited stroke lands on BOTH of the two stacked copies of the string,
+  //     outlining the sweeping one too. One rule on the root is enough here — the
+  //     attribute sits on the wrapper and the stroke reset inherits down into the
+  //     overlay subtree.
   //
   // `paint-order:normal` rides along for the same reason it does on `svg` below:
   // it is inherited too, and a stray `stroke fill` would reorder the fill.
   `[data-chat-flow] [role="status"],` +
   `[data-chat-flow] [data-turn-process],` +
   `[data-chat-flow] [data-text-shimmer],` +
+  `[data-chat-flow] [data-shimmer],` +
   `[data-chat-flow] [style*="--dsh-text-shimmer-spread"]` +
   `{-webkit-text-stroke-width:0!important;paint-order:normal!important}`,
   `svg{-webkit-text-stroke-width:0!important;paint-order:normal!important}`,

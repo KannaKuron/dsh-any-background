@@ -16,18 +16,28 @@
  * Anything that reads an adapter then picks it up without a edit — which is the
  * point: version branching must not be reachable from the styling code.
  *
+ * The folder is keyed by what its FACTS cover, not by the version number's shape:
+ * `v0-1-7-rc-2` sits beside `v0-1-7-alpha-1-2-rc-1` even though both are "0.1.7",
+ * because rc.2 moved where a menu gets its paint. Two folders on one patch line is
+ * the cost of a table that is true; a row on a folder whose facts no longer hold is
+ * the cost of one that is not.
+ *
  * @module
  */
 import type { HostAdapter, HostChannel, HostInfo } from './types'
 import { createAdapter as adapterFor015rc } from './v0-1-5-rc-2-3/adapter'
 import { createAdapter as adapterFor016alpha } from './v0-1-6-alpha-1-2/adapter'
 import { createAdapter as adapterFor017alpha } from './v0-1-7-alpha-1-2-rc-1/adapter'
+import { createAdapter as adapterFor017rc } from './v0-1-7-rc-2/adapter'
+import { createAdapter as adapterFor020rc } from './v0-2-0-rc-1/adapter'
 import { createAdapter as adapterForUnknown } from './unknown/adapter'
 
 const ADAPTERS: Record<HostChannel, (host: HostInfo) => HostAdapter> = {
   '0.1.5-rc': adapterFor015rc,
   '0.1.6-alpha': adapterFor016alpha,
   '0.1.7-alpha': adapterFor017alpha,
+  '0.1.7-rc': adapterFor017rc,
+  '0.2.0-rc': adapterFor020rc,
   unknown: adapterForUnknown,
 }
 

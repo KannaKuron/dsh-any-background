@@ -19,10 +19,17 @@
  * So the panel mechanics match 0.1.5: the wrapper slides, the wrapper takes the
  * blur, and the wrapper needs promoting.
  *
+ * Menus too — checked separately at both tags, because that is what this folder is
+ * for: 11 stylesheets paint the menu element from `--dsw-specific-menu` on alpha.1
+ * and alpha.2 alike, and `--dsw-menu-backdrop-filter` has no consumer on either, so
+ * `LEGACY_MENU_SURFACE` serves the whole line. The element is both the paint and
+ * the frost's only possible home.
+ *
  * @module
  */
 import {
   BASE_HEADER_SLOT_KEYS,
+  LEGACY_MENU_SURFACE,
   PANEL_FULLSCREEN,
   PANEL_WRAPPER,
   PLUGIN_PAGE_FROST_RULE,
@@ -82,6 +89,7 @@ export function createAdapter(host: HostInfo): HostAdapter {
     host,
     panelFragments,
     pluginPageRule: hasPluginManagerPage(host.version) ? PLUGIN_PAGE_FROST_RULE : '',
+    menus: LEGACY_MENU_SURFACE,
     surface: {
       // From this line the host's own right Sidebar carries an appearance page,
       // so the plugin's dsh-better-sidebar page would double the guide surface

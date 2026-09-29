@@ -19,10 +19,19 @@
  * an animated track with its own stacking context, it must be promoted out of it
  * or the filter has no wallpaper to sample.
  *
+ * Menus paint themselves here: 11 stylesheets declare
+ * `background:var(--dsw-specific-menu)` on the element (`Menu`, `MenuView`,
+ * `PopupSelectView`, `stat-dialog`, `ModelSelect`, `JobListAction`, `ContextMeter`,
+ * `ScheduleCatalogAction`, `SubagentHeaderLineage`, `TeamAction`, `CordisPanel`),
+ * and `--dsw-menu-backdrop-filter`
+ * has NO consumer on this line at all — the host frosts no menu, so the element is
+ * both the paint and the only place a frost can go. Hence `LEGACY_MENU_SURFACE`.
+ *
  * @module
  */
 import {
   BASE_HEADER_SLOT_KEYS,
+  LEGACY_MENU_SURFACE,
   PANEL_FULLSCREEN,
   PANEL_WRAPPER,
   panelBlurRule,
@@ -52,6 +61,7 @@ export function createAdapter(host: HostInfo): HostAdapter {
     // selector cannot match — but a resolved adapter's job is to say what THIS
     // release has, and this one does not.
     pluginPageRule: '',
+    menus: LEGACY_MENU_SURFACE,
     surface: {
       // This line's own right Sidebar does NOT carry the appearance page, so the
       // plugin's dsh-better-sidebar page owns the guide surface and must register.

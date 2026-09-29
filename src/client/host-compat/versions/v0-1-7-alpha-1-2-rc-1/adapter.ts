@@ -59,12 +59,23 @@
  *     too. Checked against every use in this plugin: the stroke group is inherited
  *     so a second match changes nothing, and the view-card discovery takes the
  *     first match, which is still the real flow root. No arm needed.
+ *   · menus still paint THEMSELVES on this line — 15 stylesheets declare
+ *     `background:var(--dsw-specific-menu)` on the element at alpha.1/alpha.2 and 16
+ *     at rc.1, so `LEGACY_MENU_SURFACE` is the answer and the `MenuSurface` child
+ *     layer does not exist yet. Worth noting what DID arrive here:
+ *     `--dsw-menu-backdrop-filter` goes from zero consumers at 0.1.6-alpha.2 to 15 at
+ *     alpha.1 (16 at rc.1), i.e. this is the line where the host started frosting
+ *     menus on the element itself. The plugin's own filter sits on the same element
+ *     and wins the cascade by sheet order, so the element is still the only place a
+ *     frost can go — which is exactly why re-declaring the HOST's token instead
+ *     would be inert on this line and correct on the next one.
  *
  * @module
  */
 import {
   BASE_HEADER_SLOT_KEYS,
   DOCKKIT_SLIDERS,
+  LEGACY_MENU_SURFACE,
   PLUGIN_PAGE_FROST_RULE,
   panelBlurRule,
 } from '../shared'
@@ -89,6 +100,7 @@ export function createAdapter(host: HostInfo): HostAdapter {
     // `renderGroup` is byte-identical to 0.1.6-alpha.2's, so the same string
     // serves the whole line — rc.1 changed only the install dialog around it.
     pluginPageRule: PLUGIN_PAGE_FROST_RULE,
+    menus: LEGACY_MENU_SURFACE,
     surface: {
       ownsSidebarGuideSurface: true,
       headerSlotKeys: BASE_HEADER_SLOT_KEYS,

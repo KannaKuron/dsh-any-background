@@ -7,9 +7,10 @@
  * `wallpaper.ts` — so it is encoded here instead, in one list, with the reason
  * next to each entry.
  *
- * What the release can change lives in one contiguous slot: the panel group
- * (which element carries the frost) and the plugin-manager page (whether this
- * release ships that page at all). Everything outside the slot is host-agnostic by
+ * What the release can change lives in the slots marked below: the panel group
+ * (which element carries the frost), the plugin-manager page (whether this release
+ * ships that page at all), and the menu groups (which token a menu's fill comes
+ * from and whose job its frost is). Everything outside a slot is host-agnostic by
  * construction — it targets attributes every release in range emits.
  *
  * The sheet is rebuilt when the release verdict lands. It has to be: `apply` runs
@@ -21,18 +22,18 @@
  * @module
  */
 import {
-  EXEMPT_DEFAULT_RULE,
   FRAME_CLEAR_RULE,
-  HEADER_POPOVER_RULE,
-  INPUT_BLUR_RULE,
   MOBILE_HEADER_RULE,
   PANEL_TOKEN_RULE,
   PLACEHOLDER_RULE,
-  POPOVER_BLUR_RULE,
   PRODUCED_RULE,
   SETTINGS_STYLE_RULE,
   STROKE_RULE,
   TRAJECTORY_STYLE_RULE,
+  exemptDefaultRule,
+  headerPopoverRule,
+  inputBlurRule,
+  popoverBlurRule,
 } from '../wallpaper'
 import { rHostAdapter, subscribeHostInfo } from './release'
 
@@ -46,38 +47,43 @@ const DARK_GRADIENT =
 /**
  * The order contract. Later entries override earlier ones at equal specificity,
  * which several groups rely on:
- *   · HEADER_POPOVER_RULE after POPOVER_BLUR_RULE — a surface moving from the card
+ *   · headerPopoverRule() after popoverBlurRule() — a surface moving from the card
  *     group to the header group must win, not merely be listed twice.
  *   · PRODUCED_RULE / STROKE_RULE after the blur groups — they shield their
  *     surfaces from an inherited slider.
- *   · EXEMPT_DEFAULT_RULE last of the token groups — an exemption has to land
+ *   · exemptDefaultRule() last of the token groups — an exemption has to land
  *     after whatever it exempts.
  *   · PLACEHOLDER_RULE genuinely last — `::placeholder` resets must survive every
  *     group above.
+ *
+ * Three of these are FUNCTIONS, not constants, and they are version slots like
+ * `panel.blur`: which declaration frosts a menu, and which token a menu's fill
+ * comes from, is the current adapter's answer (`adapter.menus`). They stay in
+ * place rather than moving next to the other slots because the contract above is
+ * about position — a slot is only safe if it does not have to relocate.
  */
 export function buildStaticStyles(): string {
   const adapter = rHostAdapter()
   const panel = adapter.panelFragments()
+  // `← adapter` marks a version slot: the string it concatenates is chosen by the
+  // resolved release. Everything else is host-agnostic by construction.
   return DARK_GRADIENT
     // First, not because anything competes with it, but because every surface
     // group below assumes the frame behind them is clear.
     + FRAME_CLEAR_RULE
     + SETTINGS_STYLE_RULE
-    + POPOVER_BLUR_RULE
+    + popoverBlurRule() // ← adapter: a menu's frost + fill token
     + TRAJECTORY_STYLE_RULE
-    + INPUT_BLUR_RULE
+    + inputBlurRule() // ← adapter: the same fill tokens scoped to the input slider
     + MOBILE_HEADER_RULE
     + PANEL_TOKEN_RULE
-    // ── version slot 1: panel opacity + blur, whose target element changed ─────
-    + panel.promotion
-    + panel.blur
-    // ── version slot 2: the plugin-manager card block, absent on older lines ───
-    + adapter.pluginPageRule
-    // ── everything below is host-agnostic ────────────────────────────────────
+    + panel.promotion // ← adapter: panel geometry, whose target element changed
+    + panel.blur // ← adapter: ditto
+    + adapter.pluginPageRule // ← adapter: the plugin-manager block, absent on old lines
     + PRODUCED_RULE
     + STROKE_RULE
-    + HEADER_POPOVER_RULE
-    + EXEMPT_DEFAULT_RULE
+    + headerPopoverRule() // ← adapter: same frost answer, header's own blur var
+    + exemptDefaultRule() // ← adapter: the exemptions clear frost through it too
     + PLACEHOLDER_RULE
 }
 
