@@ -22,6 +22,12 @@
  * the cost of a table that is true; a row on a folder whose facts no longer hold is
  * the cost of one that is not.
  *
+ * `v0-2-0-rc-2` sits beside `v0-2-0-rc-1` on a line that does not even differ in
+ * prerelease name, because that rc renamed the token a sticky menu group heading
+ * paints from. When the split is that fine-grained the channel key takes the build
+ * that opened the new facts (`0.2.0-rc.2`), and `classifyRelease` routes everything
+ * above it there — a folder named for a line is only honest while the line agrees.
+ *
  * @module
  */
 import type { HostAdapter, HostChannel, HostInfo } from './types'
@@ -30,6 +36,8 @@ import { createAdapter as adapterFor016alpha } from './v0-1-6-alpha-1-2/adapter'
 import { createAdapter as adapterFor017alpha } from './v0-1-7-alpha-1-2-rc-1/adapter'
 import { createAdapter as adapterFor017rc } from './v0-1-7-rc-2/adapter'
 import { createAdapter as adapterFor020rc } from './v0-2-0-rc-1/adapter'
+import { createAdapter as adapterFor020rc2 } from './v0-2-0-rc-2/adapter'
+import { createAdapter as adapterFor021alpha } from './v0-2-1-alpha-1/adapter'
 import { createAdapter as adapterForUnknown } from './unknown/adapter'
 
 const ADAPTERS: Record<HostChannel, (host: HostInfo) => HostAdapter> = {
@@ -38,6 +46,8 @@ const ADAPTERS: Record<HostChannel, (host: HostInfo) => HostAdapter> = {
   '0.1.7-alpha': adapterFor017alpha,
   '0.1.7-rc': adapterFor017rc,
   '0.2.0-rc': adapterFor020rc,
+  '0.2.0-rc.2': adapterFor020rc2,
+  '0.2.1-alpha': adapterFor021alpha,
   unknown: adapterForUnknown,
 }
 

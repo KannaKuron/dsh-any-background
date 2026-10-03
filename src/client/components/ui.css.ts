@@ -413,6 +413,14 @@ export function ensureUiCss(): void {
   if (!el) {
     el = document.createElement('style')
     el.id = CSS_ID
+    // Self-claim it. Through `0.2.0-rc.2` the host's module system stamped
+    // `data-plugin` on EVERY untagged `<style>` that existed when a plugin factory
+    // materialized, so an untagged sheet injected later (this one is injected by the
+    // settings page, not by the module factory) was handed to whichever plugin ran
+    // next and deleted when that plugin errored or was disposed. `0.2.1-alpha.1`
+    // narrowed the claim to tags the factory itself added; the attribute makes the
+    // sheet safe on both.
+    el.dataset.plugin = 'dsh-any-background-ui-css'
     document.head.appendChild(el)
   }
   if (el.textContent !== UI_CSS) el.textContent = UI_CSS

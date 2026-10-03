@@ -6,7 +6,7 @@
  * exist) is answered in the version folders; what is stable across all of them
  * lives here so no adapter has to re-type a host selector and get it subtly wrong.
  *
- * Verified against the harness release tags (dsh-v0.1.5-rc.2 … dsh-v0.2.0-rc.1),
+ * Verified against the harness release tags (dsh-v0.1.5-rc.2 … dsh-v0.2.1-alpha.1),
  * not inferred:
  *   · `[data-sidebar-right-panel]` — emitted by `ui-sidebar-right/shell/SidebarRight.tsx`
  *     on every release in range, with values `push` | `fullscreen`.
@@ -23,9 +23,11 @@
  *     0.1.6-alpha.2: `git ls-tree` shows it absent from 0.1.5-rc.2, 0.1.5-rc.3 and
  *     0.1.6-alpha.1, where the plugin list lived in `ui-settings-plugin-inventory`
  *     under `[data-plugin-scope]` alone — no `[data-plugin-panel]`, and no card
- *     `ul` in that group either. From alpha.2 on, the group markup (`section` →
- *     `div.groupHead` + `ul.cards`) is byte-identical through 0.2.0-rc.1, so the
- *     ONE rule below serves every tag that emits the page.
+ *     `ul` in that group either. The three anchors this rule matches — `section
+ *     [data-plugin-panel]`, `section[data-plugin-scope] > ul.cards` and
+ *     `section[data-plugin-loading] > ul.cards` — are re-emitted unchanged at
+ *     `0.2.0-rc.2` and `0.2.1-alpha.1` (checked per tag in `PluginManagerPage.tsx`),
+ *     so the ONE rule below serves every tag that emits the page.
  *
  * @module
  */
@@ -46,6 +48,26 @@ export const DOCKKIT_SLIDERS =
  *  PRODUCED slider (0.3.2): a conversation artifact that happens to open in a
  *  panel, not a page column — so it fades and frosts with the produced surfaces. */
 export const BETTER_SIDEBAR_PANEL = '[data-dsh-bottom-panel]'
+
+/** The cards that take the composer seat away from the input bar: approval
+ *  (`ui-approval`), plan review and the question composer (`ui-user-questions`).
+ *  They are siblings of `[data-composer-card]`, not its children — the seat
+ *  renders the elected takeover beside the fallback bar (verified per tag in
+ *  `ConversationContent.tsx` and both packages' `slots.inject('conversation.composer')`)
+ *  — and each paints the capsule's own `--dsw-specific-input-major`, from
+ *  `dsh-v0.1.5-rc.2` through `dsh-v0.2.1-alpha.1`.
+ *
+ *  The marker sits on the wrapper, the fill on its child card:
+ *  `[data-approval-key] > div`, `[data-plan-review-key] > section`,
+ *  `[data-question-key] > section`. */
+export const COMPOSER_TAKEOVER_CARD =
+  '[data-approval-key]>div,[data-plan-review-key]>section,[data-question-key]>section'
+
+/** The takeover cards' free-text answer field — only the question composer has
+ *  one (approval and plan review are button rows). Form controls do not inherit
+ *  text properties, so the stroke group needs the editor spelled out; appending
+ *  a suffix to `COMPOSER_TAKEOVER_CARD` would bind to its LAST arm only. */
+export const COMPOSER_TAKEOVER_EDITOR = '[data-question-key]>section textarea'
 
 /** Every surface the panel opacity slider owns — the host's own right Sidebar.
  *  Layout-neutral token re-scope. (The dsh-better-sidebar workbench used to be
@@ -171,6 +193,23 @@ export function elementFrostDecl(value: string): string {
  *   `ScheduleCatalogAction`, the subagent lineage, `TeamAction`, `CordisPanel`,
  *   `MenuSurface` itself) — re-declaring the token reaches the frost whoever ends up
  *   applying it, and does not depend on any element being the painting element.
+ *
+ * `dsh-v0.2.0-rc.2` (npm `latest`) and `dsh-v0.2.1-alpha.1`: the layer and the frost
+ *   are the same files — `MenuSurface.tsx` and `MenuSurface.module.css` are
+ *   byte-identical to rc.1, and every `--dsw-menu-backdrop-filter` consumer is too —
+ *   but the sticky GROUP HEADING inside those menus changed owner. Through rc.1 the
+ *   only grouped menu was `ModelSelect`, whose own stylesheet painted that heading
+ *   from the menu token (`ModelSelect.module.css` `.groupTitle{position:sticky;
+ *   background:var(--dsw-specific-menu)}`), so the card slider drove it and a picked
+ *   wallpaper color tinted it. At rc.2 the rule is deleted and both grouped popups
+ *   (`ModelSelect`, `PopupSelectView`) render the new `ui-primitives/MenuGroup.tsx`,
+ *   whose heading stays transparent until `data-stuck` and then paints
+ *   `--dsw-alias-menu-group-header-fill` (light `rgba(248,249,250,.94)`, dark
+ *   `rgba(48,49,54,.94)`, declared in the `body` blocks of `design-platform.css`).
+ *   The surface did not go away — its token was RENAMED, and `ModelSelect.module.css`
+ *   is the one `--dsw-specific-menu` consumer that disappears at rc.2. Left alone, it
+ *   is the single menu element the fade no longer reaches: an untinted, near-opaque
+ *   band sitting on top of every row in the list the moment that list scrolls.
  */
 /** The answer for the releases whose menus paint themselves: `0.1.5-rc`,
  *  `0.1.6-alpha`, `0.1.7-alpha`. The unresolved bucket is its own variant below. */
@@ -189,6 +228,30 @@ export const LEGACY_MENU_SURFACE: MenuSurfaceFacts = {
 export const LAYERED_MENU_SURFACE: MenuSurfaceFacts = {
   fillTokens: [MENU_FILL_TOKEN, '--dsw-menu-surface-fill'],
   frostDecl: value => `--dsw-menu-backdrop-filter:${value}`,
+}
+
+/** The fill the sticky group heading of a shared menu paints from — `MenuGroup`'s
+ *  own contribution to the menu's look, first emitted at `0.2.0-rc.2`. */
+export const MENU_GROUP_HEADER_FILL_TOKEN = '--dsw-alias-menu-group-header-fill'
+
+/** The answer for `0.2.0-rc` from `0.2.0-rc.2` and for `0.2.1-alpha`: everything
+ *  `LAYERED_MENU_SURFACE` says, plus the heading `MenuGroup` renamed.
+ *
+ *  Riding `fillTokens` rather than being left out is a decision with evidence on
+ *  both sides, so state it: the host's README calls this token "independent of the
+ *  menu material" and gives it a 94% fill while the surface layer sits at 58%/45%.
+ *  That is a choice about an OPAQUE menu. This plugin's whole product is a menu the
+ *  wallpaper shows through, and one release earlier the very same heading read the
+ *  very same token as the card it sits on — so following it keeps rc.1's contract
+ *  ("the card slider owns every layer of a menu, in the picked color") instead of
+ *  leaving an untinted stock band inside a tinted, faded card.
+ *  Compositing is on its side too: the heading stacks on the surface layer it sticks
+ *  to, so a heading and a card at the same alpha still read as a band roughly
+ *  twice-as-dense as the card (1-(1-a)²) — occluding, at the slider's level, exactly
+ *  as it did when both came from one token. */
+export const LAYERED_MENU_SURFACE_WITH_GROUP_HEADER: MenuSurfaceFacts = {
+  fillTokens: [...LAYERED_MENU_SURFACE.fillTokens, MENU_GROUP_HEADER_FILL_TOKEN],
+  frostDecl: LAYERED_MENU_SURFACE.frostDecl,
 }
 
 /** The answer when the release could not be resolved, and neither of the two
@@ -214,7 +277,7 @@ export const UNRESOLVED_MENU_SURFACE: MenuSurfaceFacts = {
 
 /** Session-header slot anchors present on EVERY release in range. The slot
  *  renderer stamps `data-slot="<key>"` unconditionally (`ui-renderer/scoped-slots.tsx`),
- *  and all five keys are registered from 0.1.5-rc.2 through 0.2.0-rc.1 —
+ *  and all five keys are registered from 0.1.5-rc.2 through 0.2.1-alpha.1 —
  *  verified per tag. Adapters append the keys their own release adds. */
 export const BASE_HEADER_SLOT_KEYS = [
   'conversation.session.header',

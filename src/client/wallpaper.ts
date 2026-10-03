@@ -1,4 +1,4 @@
-import { MENU_FILL_TOKEN, PANEL_SURFACES, BETTER_SIDEBAR_PANEL, elementFrostDecl } from './host-compat/versions/shared'
+import { MENU_FILL_TOKEN, PANEL_SURFACES, BETTER_SIDEBAR_PANEL, COMPOSER_TAKEOVER_CARD, COMPOSER_TAKEOVER_EDITOR, elementFrostDecl } from './host-compat/versions/shared'
 import { hostAdapter } from './host-compat/capabilities'
 import { HEADER_POPOVER_ATTR } from './header-tag'
 import { rWp, rWpImage, rWpVideo, rBgState, rVideoBgState, rBl, rWop, rOps, rSop, rStrokes, rColor, rHasColor, rBlurs, rBgMode, rChatTextOpacity, rTrajectoryOpacity, rPanelOpacity, rProducedOpacity, rHeaderOpacity, rScheme, rColorScheme, rSchemeOverride, cfg, setWpUrl, rBgDark, setBgDark, disposeVideoObjectUrl } from './state'
@@ -454,6 +454,17 @@ export function inputBlurRule(): string {
     'content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;' +
     '-webkit-backdrop-filter:var(--dsh-any-input-blur,none);' +
     'backdrop-filter:var(--dsh-any-input-blur,none)}' +
+    // The takeover cards that sit in the composer seat (approval / plan review /
+    // question) are the capsule's SIBLINGS, so the rule above never reaches them.
+    // They fill from the same `--dsw-specific-input-major`, which this plugin
+    // re-emits with the input alpha — so they faded while staying bare, and the
+    // blur slider read as broken on exactly the surface the user is meant to read.
+    // Same underlay recipe as the capsule: never a backdrop root of its own.
+    `.${INPUT_FROST_CLASS} ${COMPOSER_TAKEOVER_CARD}{position:relative;isolation:isolate}` +
+    `.${INPUT_FROST_CLASS} ${COMPOSER_TAKEOVER_CARD}::before{` +
+    'content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;' +
+    '-webkit-backdrop-filter:var(--dsh-any-input-blur,none);' +
+    'backdrop-filter:var(--dsh-any-input-blur,none)}' +
     '[data-cordis-panel]{' +
     '-webkit-backdrop-filter:var(--dsh-any-input-blur,none);' +
     'backdrop-filter:var(--dsh-any-input-blur,none)}' +
@@ -841,10 +852,12 @@ export const PRODUCED_RULE =
   // `<hash>_<localName>` (e.g. `o3BgMG_ioCard`), so `[class*="_ioCard"]` is
   // stable across builds while a bare `.ioCard` would never match.
   //
-  // The three surfaces 0.1.7 added to the produced family all fill from
-  // --dsw-alias-markdown-code-block too: DiffBlock ([data-diff]), the tool-result
-  // detail block (ToolDetails .root, marked [data-inspect] when it offers the
-  // inspector) and the turn-event row ([data-turn-trigger]).
+  // The three surfaces 0.1.7 added to the produced family all filled from
+  // --dsw-alias-markdown-code-block when they appeared: DiffBlock ([data-diff]), the
+  // tool-result detail block (ToolDetails .root, marked [data-inspect] when it offers
+  // the inspector) and the turn-event row ([data-turn-trigger]). They frost off the
+  // same attribute either way; the turn row's own fill moved at `0.2.0-rc.2`, which
+  // is the alpha arm's business, not this list's.
   //
   // Inline `code` chips (:not(pre)>code) ride the frost as well: they are the one
   // produced surface a reader sees mid-sentence, and leaving them opaque while the
@@ -949,15 +962,26 @@ export const PRODUCED_RULE =
   '[data-context-injection-body]{' +
   'background-color:color-mix(in srgb,var(--dsw-alias-markdown-code-block,transparent) var(--dsh-any-prod-pct,100%),transparent)!important}' +
   // ── ToolDetails [data-inspect] / turn-event row [data-turn-trigger] ───────
-  // The two produced surfaces 0.1.7 added outside the code-block family, both
-  // filling from --dsw-alias-markdown-code-block (ToolDetails.module.css,
-  // TurnTriggerNodeView.module.css). The turn row swaps to
-  // --dsw-alias-interactive-bg-hover on hover, so that state fades too — otherwise
-  // the row snaps back to opaque exactly when the pointer reaches it.
-  '[data-inspect],[data-turn-trigger]{' +
+  // The two produced surfaces 0.1.7 added outside the code-block family. They read
+  // the same token through `0.1.7` … `0.2.0-rc.1` (ToolDetails.module.css,
+  // TurnTriggerNodeView.module.css), and `0.2.0-rc.2` gave the turn row its own
+  // pair — but wrote it the way a host hands a surface to its theme:
+  //   background: var(--dsw-alias-turn-trigger-bg, var(--dsw-alias-markdown-code-block))
+  //   :hover      var(--dsw-alias-turn-trigger-bg-hover, var(--dsw-alias-interactive-bg-hover))
+  // with both aliases declared on `body`, so in DARK mode the row is
+  // `--dsw-alias-interactive-bg-hover` (and its hover is `-bg-active`) while the
+  // code block stays where it was. Reading the same chain is what keeps this arm
+  // release-neutral — a `var()` fallback is the host's own "if that property is not
+  // set" test, so an older host takes the code-block color and a newer one takes its
+  // own, with no version check here. Sharing one rule with `[data-inspect]` instead
+  // would be a visible bug: the `!important` mix would keep painting the row with
+  // the pre-rc.2 color and the row would stop tracking its hover state.
+  '[data-inspect]{' +
   'background-color:color-mix(in srgb,var(--dsw-alias-markdown-code-block,transparent) var(--dsh-any-prod-pct,100%),transparent)!important}' +
+  '[data-turn-trigger]{' +
+  'background-color:color-mix(in srgb,var(--dsw-alias-turn-trigger-bg,var(--dsw-alias-markdown-code-block,transparent)) var(--dsh-any-prod-pct,100%),transparent)!important}' +
   '[data-turn-trigger]:hover{' +
-  'background-color:color-mix(in srgb,var(--dsw-alias-interactive-bg-hover,transparent) var(--dsh-any-prod-pct,100%),transparent)!important}' +
+  'background-color:color-mix(in srgb,var(--dsw-alias-turn-trigger-bg-hover,var(--dsw-alias-interactive-bg-hover,transparent)) var(--dsh-any-prod-pct,100%),transparent)!important}' +
   // ── ChangedFiles card [data-changed-files] ────────────────────────────────
   // 0.1.7 gave the card a root fill (--dsw-alias-bg-layer-1) plus a header and a
   // file-count tile that both paint from --changes-fill (neutral-50 light /
@@ -1030,9 +1054,10 @@ export const PRODUCED_RULE =
 // blur rules already proved:
 //   settings   → the settings dialog (SETTINGS_PANEL_SEL)
 //   card       → the popover/menu surface set (popoverBlurRule's selectors)
-//   input      → composer card + cordis panel (inputBlurRule's markers), and
-//                the native editors inside them (form controls do not inherit
-//                text properties from their container)
+//   input      → composer card + cordis panel (inputBlurRule's markers), the
+//                seat takeover cards beside the capsule, and the native editors
+//                inside them (form controls do not inherit text properties from
+//                their container)
 //   chat       → the conversation message column ([data-chat-flow])
 //   trajectory → the trajectory view root
 //   produced   → code blocks / banners / inline code chips / composer chips.
@@ -1055,7 +1080,9 @@ export const STROKE_RULE = [
   // input / controls — native editors need their own declaration
   `[data-composer-card],[data-cordis-panel],` +
   `[data-composer-card] textarea,[data-composer-card] input,[data-composer-card] [contenteditable],` +
-  `[data-cordis-panel] input,[data-cordis-panel] textarea` +
+  `[data-cordis-panel] input,[data-cordis-panel] textarea,` +
+  // the seat takeover cards belong to this slider too (see inputBlurRule)
+  `${COMPOSER_TAKEOVER_CARD},${COMPOSER_TAKEOVER_EDITOR}` +
   `{-webkit-text-stroke:var(--dsh-any-stroke-input-w,0px) var(--dsh-any-stroke-input-c,transparent);paint-order:stroke fill}`,
   // chat message column
   `[data-chat-flow]{-webkit-text-stroke:var(--dsh-any-stroke-chat-w,0px) var(--dsh-any-stroke-chat-c,transparent);paint-order:stroke fill}`,
@@ -1389,6 +1416,7 @@ export const PLACEHOLDER_RULE =
   '[data-composer-card] [contenteditable]::placeholder,' +
   '[data-cordis-panel] input::placeholder,' +
   '[data-cordis-panel] textarea::placeholder,' +
+  `${COMPOSER_TAKEOVER_EDITOR}::placeholder,` +
   '.dab-input::placeholder,' +
   '.dab-input textarea::placeholder,' +
   '.dab-input input::placeholder' +

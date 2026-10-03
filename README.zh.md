@@ -4,7 +4,7 @@
   <a href="https://www.npmjs.com/package/dsh-any-background"><img alt="npm 版本" src="https://img.shields.io/npm/v/dsh-any-background?color=4d6bfe"></a>
   <a href="https://www.npmjs.com/package/dsh-any-background"><img alt="npm 月下载量" src="https://img.shields.io/npm/dm/dsh-any-background?color=4d6bfe"></a>
   <a href="https://github.com/Tkingxiao/dsh-any-background/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/npm/l/dsh-any-background?color=4d6bfe"></a>
-  <a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="支持的 DSH 版本：0.1.5-rc.2 ~ 0.2.0-rc.1" src="https://img.shields.io/badge/DSH-0.1.5--rc.2%20~%200.2.0--rc.1-4d6bfe" /></a>
+  <a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="支持的 DSH 版本：0.1.5-rc.2 ~ 0.2.1-alpha.1 及其上" src="https://img.shields.io/badge/DSH-0.1.5--rc.2%20~%200.2.1--alpha.1%2B-4d6bfe" /></a>
   <a href="https://github.com/topics/dsh-better-sidebar"><img alt="插件生态：GitHub topic dsh-better-sidebar" src="https://img.shields.io/badge/%E6%8F%92%E4%BB%B6%E7%94%9F%E6%80%81-topic%20dsh--better--sidebar-4d6bfe" /></a><br /><br />
   <a href="https://github.com/Tkingxiao/dsh-any-background"><img src="https://img.shields.io/github/stars/Tkingxiao/dsh-any-background?style=social" alt="GitHub stars"></a>
   <a href="https://dsh.directory/plugins/tkingxiao/dsh-any-background"><img src="https://dsh.directory/badges/listed.svg" alt="dsh.directory listed"></a>
@@ -12,7 +12,7 @@
 
 [English](README.md) | 中文
 
-一个 **DeepSeek Harness** 外观插件：自定义主题色、背景壁纸（图片 / 视频 / 算法动态生成），以及逐表面的透明度与模糊度控制。兼容 **DSH 0.1.5-rc.2 起、0.2.0 之前的整条 0.1.7 线，外加 `0.2.0-rc.1`**（官方右侧栏「主题」卡片等界面按宿主是否提供右侧栏注册表扩展点自动启用，缺失时静默跳过）。
+一个 **DeepSeek Harness** 外观插件：自定义主题色、背景壁纸（图片 / 视频 / 算法动态生成），以及逐表面的透明度与模糊度控制。兼容 **DSH 0.1.5-rc.2 直至 `0.2.1-alpha.1`，其上所有版本一并放行**（官方右侧栏「主题」卡片等界面按宿主是否提供右侧栏注册表扩展点自动启用，缺失时静默跳过）。
 
 ---
 
@@ -91,6 +91,16 @@
 
 ## 更新日志（只保留最近两个版本）
 
+### v0.3.4（新增两条宿主线：`0.2.0-rc.2` 与 `0.2.1-alpha.1`）
+
+- **`0.2.0-rc.2` 给吸顶的菜单分组标题另发了令牌**（`--dsw-alias-menu-group-header-fill`，取代 `ModelSelect` 自己的 `.groupTitle{background:var(--dsw-specific-menu)}`）：模型列表的分组标题重新跟着「卡片」「顶栏选项」两组滑块与所选主题色走，不再以一条不套色、近乎不透明的白带压在淡出的菜单上。这是第一条需要两个目录的补丁行——rc.1 与 rc.2 同属一个预发布渠道却交出不同的事实——所以新目录按构建命名。
+- **事件行改用他自己的颜色淡出**：rc.2 起该行从 `--dsw-alias-turn-trigger-bg` 取底（深色模式下这个别名指向交互态底色，不再是代码块那一层）。插件按宿主写下的链条去读，连带回退值一起，于是新构建拿新颜色、旧构建拿代码块颜色，样式代码里不引入任何版本判断。
+- **支持 DSH `0.2.1-alpha.1`**：`design-platform.css`、`MenuGroup`、`MenuSurface` 与 rc.2 逐字节相同；新增的 `shell.bottom` 条带画的是 `--dsw-alias-bg-base`——主背景令牌——背景透明度滑块本来就管着它。
+- **宿主小版本更新不再需要插件跟着发版**：`engines.dsh`、六个受门禁的 `@deepseek-ai/dsh-*` peer 与 `dsh.compatibility` 现在以 `|| 0.2.1-alpha.1 || >=0.1.7-alpha.1` 收尾——总括不设上界。从 `0.1.7-rc.1` 起，peer 范围没点名当前 release 的插件会被整个禁用，而一条写到头的范围等于在一款还能继续工作的插件前面砌墙：不设上界的范围会把未来的 0.2.x、0.3.x 构建交给最近的一份已核对事实，并在日志里写清它离 `exact` 有多远；猜错的最坏代价是某个滑块不再淡出它已认不出的表面。装到新宿主仍要重启 `dsh web`——peer 检查发生在 profile 组装时。
+- **接管输入位的那几张卡片现在跟着「输入模糊」磨砂了**：审批、计划回顾与问题卡渲染在 `[data-composer-card]` 的*旁边*，却填的是同一个 `--dsw-specific-input-major`——于是它们会随输入透明度淡出，模糊滑块却对它们无事可做，正是最该看清的那张卡直接压在壁纸上。现在它们拿到输入胶囊同款 `::before` 衬底，并且和胶囊一样只在模糊值非零时挂上，零值时插件不额外制造层叠上下文；答案输入框一并接进输入组的描边与占位符绑定。三张卡的锚点（`[data-approval-key]` / `[data-plan-review-key]` / `[data-question-key]`）从 `0.1.5-rc.2` 到 `0.2.1-alpha.1` 没有变过，所以这条绑定是全范围的事实，放在共享层而不是某个版本目录里。
+- **删掉 `invariant` 伴生入口**（`lib/invariant.js`、它的 `exports` 条目、它的 `@deepseek-ai/dsh-invariants` peer）：从来没有任何一行装载它，而 `0.2.1-alpha.1` 已把这个包从宿主里移除。
+- **设置页那份样式表补上了其它表都有的插件标记**：到 rc.2 为止，宿主的模块系统会把当时*所有*未打标的 `<style>` 判给正在装配的那个插件，并在该插件失败时把它们删掉；`0.2.1-alpha.1` 把认领范围收窄到工厂自己新增的那些。打上标记后，两种宿主都动不了它。
+
 ### v0.3.3（菜单按版本交出绘制事实，支持 DSH 0.2.0-rc.1）
 
 - **`0.1.7-rc.2` 上「卡片」「顶栏选项」两组滑块对菜单又有效了**：那个构建把菜单的底色与磨砂移到子层，并把 `--dsw-specific-menu` 改成别名，插件一直在写的令牌在菜单上再没有别的读者。「菜单从哪些令牌取色、磨砂由哪一层承担」现在由每个版本目录各自交出，公共代码里不再留假设。
@@ -98,16 +108,6 @@
 - **流光文字跟上 0.2.0 的重写**：描边豁免补入 `[data-shimmer]`，进度文字不再被勾成叠放的两份。
 - **插件页首屏的加载骨架屏**拿到与它所代替的那张卡片列表相同的磨砂底。
 - 装到 0.2.0 宿主上要重启 `dsh web`：从 `0.1.7-rc.1` 起宿主按 peer 范围决定插件能不能加载，没被点名的版本在导入任何模块之前就被整行禁用。
-
-### v0.3.2（产出物表面全量绑定，0.1.7-rc.2 恢复加载）
-
-- **产出物滑块覆盖 0.1.7 渲染的每一件产物**：工具详情卡片、事件行、diff 块、变更文件卡片、内联 `code` 磨砂，以及悬浮预览窗——它把卡片 portal 到 `<body>`，所以此前不归任何滑块管。
-- **代码卡片的头部横幅恢复跟随主题**，不再是一块无视滑块的近白条。
-- **dsh-better-sidebar 的工作台改由产出物滑块接管**；面板行现在只代表宿主自己的右侧栏。
-- **一张产物卡片不再同时听两个滑块**：它的根节点改读产出物自己的原始层级令牌。
-- **输入框模糊回到 0 之后不再残留层叠上下文。**
-- **antd 的确认弹窗不再被当成设置面板**：它原先继承了设置表面色、磨砂与描边分组，因为旧选择器只认那三个 antd 同样会发出的 ARIA 属性。
-- **`0.1.7-rc.2` 恢复加载，其后的 0.1.x 一并放行**：`engines.dsh`、七个 `@deepseek-ai/dsh-*` peer 与 `dsh.compatibility` 都以 `|| 0.1.7-rc.2 || >=0.1.7-alpha.1 <0.2.0-alpha.0` 收尾——只写 `>=0.1.7` 一个预发布构建都匹配不到。
 
 ## 安装
 
@@ -151,14 +151,14 @@ pnpm dsh web
 
 ## 兼容性
 
-- **[`dsh web`](https://github.com/deepseek-ai/deepseek-harness) 0.1.5-rc.2 ~ &lt;0.2.0，外加 `0.2.0-rc.1`** — `engines.dsh`、七个 `@deepseek-ai/dsh-*` 的 `peerDependencies` 与 `dsh.compatibility.dsh` 先逐一列出本插件核对过的 `0.1.5-rc` 与 `0.1.6-alpha` 各构建，再以 `>=0.1.7-alpha.1 <0.2.0-alpha.0` 收尾让 0.1.7 全线加载，最后单独写上 `0.2.0-rc.1`——总括刻意停在 0.2.0 之前，因为没比对过的 0.2.0 构建就是另一个宿主，它的事实要由它自己的目录来写。`0.1.7-rc.1`、`0.1.7-rc.2`、`0.2.0-rc.1` 以逐包比对 tag 核对，它们之前的构建是实测过的。从 `0.1.7-rc.1` 起宿主自己强制这份 peer 列表——范围没写到的版本会在模块被导入之前整个禁用——所以列不列决定插件能不能跑，它不是写给人看的说明；`dsh.compatibility.dshReleases` 里则记录哪些构建真的核对过。同一道门禁也解释了为什么已经在 0.2.0 上的机器需要插件发版（或手工授予精确版本豁免）**并**重启宿主：检查发生在 profile 组装时，而不是插件更新时。宿主版本在运行时由 Node 半侧解析，依赖特定宿主版本渠道的功能（右侧栏面板模糊、官方侧栏「主题」卡片）只在对应宿主结构存在时启用，其余功能在整个范围内表现一致。
-- **版本适配隔离**：release 由 Node 半侧从进程自身那份 `@deepseek-ai/dsh/package.json` 读出（客户端上下文不暴露版本；`ctx.profileContext.installAnchor` 指不到时退回启动器的磁盘布局），经 `read` RPC 下发后只由前置适配层路由——`src/host-compat/` 负责探测与渠道归类，`src/client/host-compat/versions/` 下**每个版本一个目录**（`v0-1-5-rc-2-3` / `v0-1-6-alpha-1-2` / `v0-1-7-alpha-1-2-rc-1` / `v0-1-7-rc-2` / `v0-2-0-rc-1` / `unknown`），各自描述该版本的面板力学、头部槽位键、插件页形状，以及菜单的底色与磨砂落在哪一层。底码只向适配层提问（引导页表面归谁、模糊挂在哪一层、菜单该重写哪些令牌），不比较版本字符串。同一补丁行内的其它构建（`0.1.6-alpha.4` 之于核对基准 `0.1.6-alpha.2`）用该行的档位；整条补丁行都不在已核对范围内才收边取最近的一档并写日志。只有解析不到 release 时归入 `unknown`，回退到按 DOM 形状探测（`:has()` 双臂）而不是猜一个版本；适配新宿主 = 新增一个版本目录并在注册表登记。
+- **[`dsh web`](https://github.com/deepseek-ai/deepseek-harness) 0.1.5-rc.2 ~ `0.2.1-alpha.1`，其上所有版本一并放行** — `engines.dsh`、六个受门禁的 `@deepseek-ai/dsh-*` 的 `peerDependencies` 与 `dsh.compatibility.dsh` 先逐一列出本插件核对过的 `0.1.5-rc` 与 `0.1.6-alpha` 各构建——总括从它们之上开始，所以这些必须写全——继续点名此后逐个 diff 过的版本（`0.1.7-rc.1`、`0.1.7-rc.2`、`0.2.0-rc.1`、`0.2.0-rc.2`、`0.2.1-alpha.1`）作为记录，最后以不设上界的 `>=0.1.7-alpha.1` 收尾，让 0.1.7、0.2 及其后的每一个 release 都能加载。不设上界是有意选的：从 `0.1.7-rc.1` 起宿主强制的正是这份 peer 列表——范围没写到的版本会在导入任何模块之前被整行禁用——一条写到头的范围等于在一款还能正常工作的插件前面砌墙。没见过的 release 会取最近的一份事实，并在日志里写清它离 `exact` 有多远；一份过期事实最坏的代价是某个滑块不再淡出宿主已经搬走的那个表面，而一道失败关闭的版本检查代价是整个插件。`dsh.compatibility.dshReleases` 记录哪些构建核对过、怎么核对的：`0.1.7-rc.1` / `0.1.7-rc.2`、`0.2.0-rc.1` / `0.2.0-rc.2` 与 `0.2.1-alpha.1` 以逐包比对 tag 核对，它们之前的构建是实测过的。这道门禁也意味着安装或更新插件后仍需重启 `dsh web`——检查发生在 profile 组装时，而不是插件更新时——但不设上界的总括，正让已经升到更新宿主的机器不再需要先等插件发版（或手工授予精确版本豁免 `dsh plugin allow-version`）。宿主版本在运行时由 Node 半侧解析，依赖特定宿主版本渠道的功能（右侧栏面板模糊、官方侧栏「主题」卡片）只在对应宿主结构存在时启用，其余功能在整个范围内表现一致。
+- **版本适配隔离**：release 由 Node 半侧从进程自身那份 `@deepseek-ai/dsh/package.json` 读出（客户端上下文不暴露版本；`ctx.profileContext.installAnchor` 指不到时退回启动器的磁盘布局），经 `read` RPC 下发后只由前置适配层路由——`src/host-compat/` 负责探测与渠道归类，`src/client/host-compat/versions/` 下**每个事实集合一个目录**（`v0-1-5-rc-2-3` / `v0-1-6-alpha-1-2` / `v0-1-7-alpha-1-2-rc-1` / `v0-1-7-rc-2` / `v0-2-0-rc-1` / `v0-2-0-rc-2` / `v0-2-1-alpha-1` / `unknown`），各自描述该版本的面板力学、头部槽位键、插件页形状，以及菜单的底色与磨砂落在哪一层。目录按它覆盖的事实命名，不按版本号的形状：`0.2.0-rc.1` 与 `0.2.0-rc.2` 同属一个预发布渠道，但 rc.2 改了吸顶菜单分组标题取色的令牌，于是这条补丁行上并着两个目录，较新的那个按开启它的那个构建命名。底码只向适配层提问（引导页表面归谁、模糊挂在哪一层、菜单该重写哪些令牌），不比较版本字符串。同一补丁行内的其它构建（`0.1.6-alpha.4` 之于核对基准 `0.1.6-alpha.2`）用该行的档位；整条补丁行都不在已核对范围内才收边取最近的一档并写日志——`0.2.1-alpha.1` 之上的每一个 release 如今就是靠这一档加载的。只有解析不到 release 时归入 `unknown`，回退到按 DOM 形状探测（`:has()` 双臂）而不是猜一个版本；适配新宿主 = 新增一个版本目录并在注册表登记。
 - **[DSHA](https://github.com/DSH-APP/DSHA)** — DeepSeek Harness 安卓启动器（免 ROOT、免 Termux）。其包内 dsh 为 `0.1.5-rc.2`，落在兼容范围内；移动端界面由 `dsh-web-mobile` 提供。
 - **[deepseek-harness-desktop](https://github.com/anywhere-labs/deepseek-harness-desktop)** — 支持
 
 ## 权限、副作用与边界
 
-- **接入形态**：官方 Profile Bundle——`package.json` 声明 `dsh.bundle.patch: ./cordis.patch.yml`（loader 插入层），仓库提交可直接使用的预构建运行时制品（`lib/index.js`、`lib/invariant.js`、`lib/client.js`），无安装脚本、无 postinstall、无 native 二进制、安装时不执行任何构建。
+- **接入形态**：官方 Profile Bundle——`package.json` 声明 `dsh.bundle.patch: ./cordis.patch.yml`（loader 插入层），仓库提交可直接使用的预构建运行时制品（`lib/index.js`、`lib/client.js`），无安装脚本、无 postinstall、无 native 二进制、安装时不执行任何构建。
 - **文件系统**：服务端仅在 `<dsh 主目录>/.dsh-any-background-data/` 内读写（配置 JSON、壁纸、轮换池、视频、字体），不触碰该目录之外的任何路径；配置写入为原子写（临时文件 + rename）。这些文件落在真实磁盘上，**不受 generation 恢复影响，也不会被其回滚**——清除它们即彻底重置插件。
 - **网络**：仅在用户主动粘贴 http/https 图片或视频网址并点击「应用」时发起一次出站请求下载该资源；除此之外无遥测、无外部服务调用。
 - **Shell / native**：无。不使用 `child_process`、不加载 native 模块、不运行动态下载的二进制。

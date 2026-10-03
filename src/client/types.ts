@@ -76,7 +76,8 @@ export interface PartBlurs {
   chat: number
   /** Trajectory view surface. */
   trajectory: number
-  /** Input/control surfaces ([data-composer-card], [data-cordis-panel]). */
+  /** Input/control surfaces ([data-composer-card], [data-cordis-panel], and the
+   *  takeover cards that sit in the composer seat beside the capsule). */
   input: number
   /** Third-party workbench panel (dsh-better-sidebar bottom panel). */
   panel: number

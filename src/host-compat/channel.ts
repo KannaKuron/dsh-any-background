@@ -20,8 +20,25 @@
  *  `0.1.7-alpha` and `0.1.7-rc` share a patch line but not an answer: the menu
  *  paint moved to `MenuSurface`'s own layer at `0.1.7-rc.2`, which is a fact about
  *  the host's CSS that no amount of "same line" reasoning carries over. A line is
- *  only as unified as its verified facts. */
-export type HostChannel = '0.1.5-rc' | '0.1.6-alpha' | '0.1.7-alpha' | '0.1.7-rc' | '0.2.0-rc' | 'unknown'
+ *  only as unified as its verified facts.
+ *
+ *  `0.2.0-rc.2` is keyed down to the BUILD because the line split against that
+ *  scheme: `0.2.0-rc.1` and `0.2.0-rc.2` are the same patch line AND the same
+ *  prerelease channel, yet rc.2 renamed the token a sticky menu group heading
+ *  paints from, so the rc.1 answer is no longer complete for it. When one channel
+ *  name cannot hold both halves of a line, the half that opened the new facts is
+ *  named for the build that opened them, and `classifyRelease`'s "highest verified
+ *  row at or below the host" hands every later `0.2.0-rc` (and `0.2.0` stable) to
+ *  it. */
+export type HostChannel =
+  | '0.1.5-rc'
+  | '0.1.6-alpha'
+  | '0.1.7-alpha'
+  | '0.1.7-rc'
+  | '0.2.0-rc'
+  | '0.2.0-rc.2'
+  | '0.2.1-alpha'
+  | 'unknown'
 
 /** A known channel — one that has a real adapter. */
 export type KnownChannel = Exclude<HostChannel, 'unknown'>
@@ -40,7 +57,9 @@ export interface SupportedRelease {
  *  a row then reports `exact` instead of `line`, and no new folder appears.
  *  Rows may ALSO share a patch line while carrying different channels, which is
  *  how a line says "the facts changed halfway through it" (`0.1.7-alpha.2` and
- *  `0.1.7-rc.1` speak for `0.1.7-alpha`, `0.1.7-rc.2` opens `0.1.7-rc`).
+ *  `0.1.7-rc.1` speak for `0.1.7-alpha`, `0.1.7-rc.2` opens `0.1.7-rc`, and
+ *  `0.2.0-rc.2` opens a second answer on a line that had one — see the note on
+ *  `HostChannel` for why that row is keyed to the build).
  *  Adding an ADAPTER means adding a channel plus a folder in
  *  `client/host-compat/versions/`. */
 export const SUPPORTED_RELEASES: readonly SupportedRelease[] = [
@@ -50,6 +69,8 @@ export const SUPPORTED_RELEASES: readonly SupportedRelease[] = [
   { channel: '0.1.7-alpha', release: '0.1.7-rc.1' },
   { channel: '0.1.7-rc', release: '0.1.7-rc.2' },
   { channel: '0.2.0-rc', release: '0.2.0-rc.1' },
+  { channel: '0.2.0-rc.2', release: '0.2.0-rc.2' },
+  { channel: '0.2.1-alpha', release: '0.2.1-alpha.1' },
 ]
 
 /** How the chosen adapter relates to the release that was detected. Reported so a

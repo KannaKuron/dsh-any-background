@@ -34,12 +34,11 @@ const bundleEverythingElse = (id: string): boolean | undefined =>
   EXTERNALS.includes(id) ? undefined : true
 
 const configs: UserConfig[] = [
-  // Node half: lib/index.js + lib/invariant.js
+  // Node half: lib/index.js
   {
     name: ID,
     entry: {
       index: 'src/index.ts',
-      invariant: 'src/invariant.ts',
     },
     outDir: 'lib',
     format: ['esm'],
