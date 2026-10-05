@@ -114,6 +114,11 @@ export const InputIcon = ({ size, className }: { size?: number; className?: stri
   <Glyph size={size} className={className}><rect x="2.2" y="4" width="11.6" height="8" rx="2" /><path d="M8 6.6v2M7 8h2" /></Glyph>
 )
 
+/** Session header bar: a window with its title band above the content. */
+export const HeaderBarIcon = ({ size, className }: { size?: number; className?: string }) => (
+  <Glyph size={size} className={className}><rect x="2.2" y="2.2" width="11.6" height="11.6" rx="2" /><path d="M2.2 5.6h11.6" /></Glyph>
+)
+
 export const PlusIcon = ({ size, className }: { size?: number; className?: string }) => (
   <Glyph size={size} className={className}><path d="M8 3v10M3 8h10" /></Glyph>
 )

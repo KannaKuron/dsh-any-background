@@ -59,7 +59,24 @@ export const BETTER_SIDEBAR_PANEL = '[data-dsh-bottom-panel]'
  *
  *  The marker sits on the wrapper, the fill on its child card:
  *  `[data-approval-key] > div`, `[data-plan-review-key] > section`,
- *  `[data-question-key] > section`. */
+ *  `[data-question-key] > section`.
+ *
+ *  One more fact these three share, and it is the reason the input-frost
+ *  treatment for them lives in a runtime pass instead of a stylesheet rule:
+ *  NO release in range declares `position` on any of the three cards (checked
+ *  per tag — 0 hits for `position:` in `ApprovalPanel.module.css`,
+ *  `PlanReviewPanel.module.css` and `QuestionComposer.module.css`), so unlike
+ *  the fallback capsule — whose `.card` is `position:relative` on every tag —
+ *  the host does not hand the plugin a containing block to mount a
+ *  `z-index:-1` underlay on. Writing that `position` from the plugin's own
+ *  stylesheet turns the card's box into a cascade race with anything else that
+ *  positions it: a host build that caps the card with a percentage
+ *  `max-height` loses its absolute containing block the moment a plugin rule
+ *  wins that race, and the whole chain collapses — content outside the card,
+ *  buttons off the viewport (dsh-any-background issue #24). The consumer that
+ *  needs the containing block (`applyTakeoverFrost`) therefore probes each card
+ *  at runtime and only anchors a box whose computed position is `static`; see
+ *  `inputBlurRule`. */
 export const COMPOSER_TAKEOVER_CARD =
   '[data-approval-key]>div,[data-plan-review-key]>section,[data-question-key]>section'
 

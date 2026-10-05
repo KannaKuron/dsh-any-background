@@ -1,7 +1,7 @@
 import { MENU_FILL_TOKEN, PANEL_SURFACES, BETTER_SIDEBAR_PANEL, COMPOSER_TAKEOVER_CARD, COMPOSER_TAKEOVER_EDITOR, elementFrostDecl } from './host-compat/versions/shared'
 import { hostAdapter } from './host-compat/capabilities'
 import { HEADER_POPOVER_ATTR } from './header-tag'
-import { rWp, rWpImage, rWpVideo, rBgState, rVideoBgState, rBl, rWop, rOps, rSop, rStrokes, rColor, rHasColor, rBlurs, rBgMode, rChatTextOpacity, rTrajectoryOpacity, rPanelOpacity, rProducedOpacity, rHeaderOpacity, rScheme, rColorScheme, rSchemeOverride, cfg, setWpUrl, rBgDark, setBgDark, disposeVideoObjectUrl } from './state'
+import { rWp, rWpImage, rWpVideo, rBgState, rVideoBgState, rBl, rWop, rOps, rSop, rStrokes, rColor, rHasColor, rBlurs, rBgMode, rChatTextOpacity, rTrajectoryOpacity, rPanelOpacity, rProducedOpacity, rHeaderOpacity, rHeaderBarOpacity, rScheme, rColorScheme, rSchemeOverride, cfg, setWpUrl, rBgDark, setBgDark, disposeVideoObjectUrl } from './state'
 import type { BackgroundType, GeneratedBgParams, PartOpacities, PartBlurs, StrokeConfig } from './types'
 import { genTokens, toRgba, extractWallpaperColor, analyzeFrameDark } from './utils/color'
 import { loadImage } from './utils/image'
@@ -237,6 +237,13 @@ function applyCustomTokensNow(ops: PartOpacities): void {
       for (const name of appliedTokenNames) document.body.style.removeProperty(name)
       appliedTokenNames = Object.keys(tokens)
     }
+    // The header bar is painted here, before the surface bail below: its own
+    // opacity is a part value like any other, and its material is the
+    // main-background surface this funnel already resolved. The Windows caption
+    // band and the host's native-button probe are pinned here too — the same
+    // resolved source, but at full strength rather than through a slider.
+    applyHeaderBar(surfaces)
+    applyNativeCaption(surfaces)
     // Without a palette there are no surface alphas to re-emit — the host
     // palette stays untouched and only the label direction was asserted. Now
     // that the host's own resolved tokens can back the alpha, this only bails
@@ -428,6 +435,18 @@ export function popoverBlurRule(): string {
 // composer-card rules below (see the paint-order note there).
 const INPUT_FROST_CLASS = 'dab-input-frost'
 
+// Carried by each composer-seat takeover card (approval / plan review /
+// question) while the input frost is on. Unlike the capsule's arm above, this
+// class is attached PER CARD at runtime by `applyTakeoverFrost`, not by a
+// `[data-approval-key]>div` selector: see the note inside `inputBlurRule` for
+// why the anchor has to be probed rather than declared.
+const TAKEOVER_FROST_CLASS = 'dab-takeover-frost'
+
+// Marks a card whose `position:relative` was written by the plugin because the
+// host left it static — the `setBlur` idiom, same attribute name and same
+// meaning: only the writer may clear it.
+const TAKEOVER_POS_ATTR = 'data-dab-pos-patched'
+
 export function inputBlurRule(): string {
   // The composer capsule must NOT carry backdrop-filter itself: it is an
   // ancestor of the in-place popovers (permission / command / model lists),
@@ -460,11 +479,38 @@ export function inputBlurRule(): string {
     // re-emits with the input alpha — so they faded while staying bare, and the
     // blur slider read as broken on exactly the surface the user is meant to read.
     // Same underlay recipe as the capsule: never a backdrop root of its own.
-    `.${INPUT_FROST_CLASS} ${COMPOSER_TAKEOVER_CARD}{position:relative;isolation:isolate}` +
-    `.${INPUT_FROST_CLASS} ${COMPOSER_TAKEOVER_CARD}::before{` +
+    //
+    // WHY THIS ARM IS CLASS-ONLY (no `[data-approval-key]>div` selector, no
+    // `position`, and why the class is attached at runtime): the underlay needs
+    // the card to BE the containing block for its `inset:0` layer, and the host
+    // never positions these cards — no release in range declares `position` on
+    // any of the three (see `COMPOSER_TAKEOVER_CARD`). A stylesheet rule that
+    // declares one therefore decides the card's position BY CASCADE against
+    // whatever else is styling the page, and a host build that positions the card
+    // itself (issue #24's desktop shell pins it with a percentage `max-height`,
+    // so the card's absolute containing block is load-bearing) hands the plugin
+    // that decision: the `relative` wins or loses on specificity, and whichever
+    // way it lands the host's box is now the plugin's to move. Measured both ways
+    // against a shell rule of the same weight — the plugin's rule wins by source
+    // order and turns the host's absolute card into an in-flow one, seat height
+    // and all — which is a host layout this plugin has no business deciding; that
+    // report is where the card's box came apart. So: `applyTakeoverFrost` attaches
+    // this class only while the blur is non-zero, and writes `position:relative`
+    // INLINE only when the card's computed position is `static` — the `setBlur`
+    // guard. A card the host positions keeps its own position (which is then the
+    // containing block the underlay rides, so the frost still lands) and gets
+    // nothing but the stacking context below.
+    `.${TAKEOVER_FROST_CLASS}{isolation:isolate}` +
+    `.${TAKEOVER_FROST_CLASS}::before{` +
     'content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;' +
     '-webkit-backdrop-filter:var(--dsh-any-input-blur,none);' +
     'backdrop-filter:var(--dsh-any-input-blur,none)}' +
+    // …but that stacking context is the same trap PART_BLUR_RULE documents: a
+    // dialog mounted inside the card keeps its z-index local and can be buried
+    // under the seat. The cards are host-owned surfaces a Tool fills through the
+    // `conversation.approval.detail` slot, so a dialog can legitimately open
+    // inside one. Losing the frost while it is open is the cheaper half.
+    `.${TAKEOVER_FROST_CLASS}:has([role="dialog"]){isolation:auto}` +
     '[data-cordis-panel]{' +
     '-webkit-backdrop-filter:var(--dsh-any-input-blur,none);' +
     'backdrop-filter:var(--dsh-any-input-blur,none)}' +
@@ -483,6 +529,43 @@ function applyInputBlur(px: number): void {
   else root.classList.remove(INPUT_FROST_CLASS)
   if (px > 0) root.style.setProperty('--dsh-any-input-blur', `blur(${px}px)`)
   else root.style.removeProperty('--dsh-any-input-blur')
+  applyTakeoverFrost(px)
+}
+
+/** Carry the input frost on the seat's takeover cards (approval / plan review /
+ *  question), the capsule's siblings — see `inputBlurRule` for the recipe and
+ *  why it is attached here rather than by a stylesheet selector.
+ *
+ *  The anchor probe is the `setBlur` guard: `position:relative` is written
+ *  inline ONLY where the host left the card `static`, and remembered with
+ *  `TAKEOVER_POS_ATTR` so clearing it is this function's job. A card a host or a
+ *  desktop shell positions itself is left exactly as it is — its own position
+ *  supplies the underlay's containing block — so no host box ever has its
+ *  position decided by this plugin's cascade (issue #24).
+ *
+ *  Idempotent and cheap in the steady state: cards already carrying the class
+ *  (or already clear of it) are skipped without a style read. */
+function applyTakeoverFrost(px: number): void {
+  const cards = document.querySelectorAll<HTMLElement>(COMPOSER_TAKEOVER_CARD)
+  if (px > 0) {
+    for (const card of cards) {
+      if (card.classList.contains(TAKEOVER_FROST_CLASS)) continue
+      if (getComputedStyle(card).position === 'static') {
+        card.style.position = 'relative'
+        card.setAttribute(TAKEOVER_POS_ATTR, '1')
+      }
+      card.classList.add(TAKEOVER_FROST_CLASS)
+    }
+    return
+  }
+  for (const card of cards) {
+    if (!card.classList.contains(TAKEOVER_FROST_CLASS)) continue
+    card.classList.remove(TAKEOVER_FROST_CLASS)
+    if (card.getAttribute(TAKEOVER_POS_ATTR) === '1') {
+      card.style.removeProperty('position')
+      card.removeAttribute(TAKEOVER_POS_ATTR)
+    }
+  }
 }
 
 // Narrow-viewport hosts render a fixed session-title bar (.dsh-mobile-app-header)
@@ -496,6 +579,151 @@ export const MOBILE_HEADER_RULE =
   'background:var(--dsh-any-op-bg,transparent)!important;' +
   'backdrop-filter:var(--dsh-any-part-blur-global,none);' +
   '-webkit-backdrop-filter:var(--dsh-any-part-blur-global,none)}'
+
+// ── Session header bar (the conversation's own 「标题栏」) ──────────────────────
+// The row that carries the session title, its actions and the view tabs — the
+// host's `ConversationHeader`, its own file from `0.1.7-alpha.1`:
+// `ui-conversation/skeleton/ConversationHeader.tsx` renders one `<header>` that
+// holds the header slots. Before that line (0.1.5-rc.2 / 0.1.6-alpha.2) the slots
+// mounted straight into the conversation root with no row of their own, so there
+// is nothing to tint there and this part never claims anything.
+//
+// The bar has no surface of its own — the centre column's background paints
+// straight through it — so once a wallpaper is up, the strip the title and the
+// tabs sit on shows the raw picture while every surface around it is masked. It
+// gets its own opacity + blur pair, painted as a REGION TINT the way the chat
+// column's card is (see `VIEW_CARDS`): the material is the plugin's
+// main-background surface at this part's own opacity, so the bar reads as one band
+// over the column instead of a second colour stacked on it, and the frost rides
+// the element's own `backdrop-filter` — the header hosts no in-place overlay of
+// its own (its dropdowns portal to `body`), so it may be the backdrop root here.
+//
+// The row is CLAIMED AT RUNTIME, not matched by a stylesheet selector: the
+// addressable seam every release in range emits is the slot wrapper
+// (`[data-slot^="conversation.session.header"]`), so the plugin walks from that
+// anchor up to the nearest `<header>` and tags it with `dab-header-bar` — the same
+// idiom the view cards and the frame use, and the one that cannot be broken by a
+// host that re-wraps or renames the element around the slots.
+const HEADER_BAR_CLASS = 'dab-header-bar'
+const HEADER_BAR_ANCHOR = '[data-slot^="conversation.session.header"]'
+
+/** The session header bar, or null where this host has no such element. */
+function discoverHeaderBar(): HTMLElement | null {
+  if (centerEl === null || !document.body.contains(centerEl)) return null
+  const bar = centerEl.querySelector(HEADER_BAR_ANCHOR)?.closest('header')
+  return bar instanceof HTMLElement ? bar : null
+}
+
+/** The bar's paint. The variables are written by `applyHeaderBar`; the class is
+ *  only ever added when they are, so a host the plugin is not theming keeps its
+ *  own header untouched. */
+export const HEADER_BAR_RULE =
+  `.${HEADER_BAR_CLASS}{` +
+  'background:var(--dsh-any-op-header-bar,transparent)!important;' +
+  'backdrop-filter:var(--dsh-any-blur-header-bar,none);' +
+  '-webkit-backdrop-filter:var(--dsh-any-blur-header-bar,none)}'
+
+/** Claim the bar and write its material + frost. `surfaces` arrives from the token
+ *  funnel, which already has the resolved source list; the settings sliders and the
+ *  parts pass call it without one and the sources are re-resolved here. */
+export function applyHeaderBar(surfaces?: Record<string, string> | null): void {
+  const src = surfaces === undefined ? (paletteTokens() ?? readHostOpacityTokens()) : surfaces
+  const base = src?.['--dsw-alias-bg-base']
+  const root = document.documentElement
+  discoverParts()
+  const bar = discoverHeaderBar()
+  if (base === undefined) {
+    // Not theming (no picked color, no wallpaper verdict): not our row.
+    if (bar !== null) bar.classList.remove(HEADER_BAR_CLASS)
+    root.style.removeProperty('--dsh-any-op-header-bar')
+    root.style.removeProperty('--dsh-any-blur-header-bar')
+    return
+  }
+  root.style.setProperty('--dsh-any-op-header-bar', toRgba(base, rHeaderBarOpacity()))
+  const px = rBlurs().headerBar
+  if (px > 0) root.style.setProperty('--dsh-any-blur-header-bar', `blur(${px}px)`)
+  else root.style.removeProperty('--dsh-any-blur-header-bar')
+  if (bar !== null) bar.classList.add(HEADER_BAR_CLASS)
+}
+
+// ── Windows desktop caption band + native window-controls block ───────────────
+// The caption row is CHROME, so it stops following the sidebar slider. The facts,
+// read off the desktop app rather than inferred:
+//   · `preload-windows.ts` stamps `data-windows-titlebar` on <html> for the
+//     primary window and paints nothing itself;
+//   · the caption band is `AppFrame.module.css`'s `.frame::before`, and both it
+//     and `.frame` fill from `--dsw-specific-sidebar-fill` — the token the
+//     sidebar slider owns, which is why dialing that slider down leaves the
+//     window's own caption clear and the wallpaper raw under the title and the
+//     Application / Edit menubar (issue #23, symptom 1);
+//   · the native window-controls overlay — the minimize/maximize/close block,
+//     drawn by Windows and not by the page — is colored by that same preload,
+//     which MEASURES `--dsw-specific-sidebar-fill` and `--dsw-alias-label-primary`
+//     off a probe span it appends to <body> and ships them over
+//     `dsh-desktop:windows-appearance`. There is no page-callable IPC and the
+//     `dshDesktop` bridge exposes none, so those measured tokens ARE the plugin's
+//     entire lever on that block. A caption is a window colour, not a page
+//     surface: the platform draws it as ONE OPAQUE COLOR, so a translucent band
+//     and the block can never agree (symptom 2).
+// The answer is to treat the band as material at FULL strength and to feed the
+// host's probe the same literal, which makes the block show the band's color
+// instead of the sidebar slider's alpha. The material is the palette's sidebar
+// fill when a color was picked and the neutral the plugin would build for the
+// effective scheme otherwise, so its direction always matches the label ink the
+// plugin is asserting (see the label flip in `applyCustomTokensNow`): the menubar
+// inherits that ink and the measured `--dsw-alias-label-primary` — the glyph color
+// of the native buttons — is the same ink, so both stay readable on the band in
+// either direction.
+// NOT a settings part: the band is window chrome with no slider of its own, so
+// nothing in the panel writes it — the 「标题栏」 opacity/blur pair owns the
+// conversation's own header row instead (see `applyHeaderBar`). Inert where the
+// preload did not mark the document, and no declaration at all where the plugin
+// is not theming (no picked color, no wallpaper verdict), so a stock install's
+// caption keeps the host's own look.
+const CAPTION_FRAME_CLASS = 'dab-frame-caption'
+const WCO_PROBE_SEL = 'body > span[style*="--dsw-specific-sidebar-fill"]'
+
+let wcoStyleEl: HTMLStyleElement | null = null
+
+function ensureWcoStyle(): HTMLStyleElement {
+  if (wcoStyleEl?.isConnected) return wcoStyleEl
+  wcoStyleEl = document.createElement('style')
+  wcoStyleEl.dataset.plugin = 'dsh-any-background-wco'
+  document.head.appendChild(wcoStyleEl)
+  return wcoStyleEl
+}
+
+/** The band's opaque material, or '' when the plugin has no theme to assert. The
+ *  sampled sidebar fill is already opaque in both source paths (the plugin's
+ *  palette builds `hsl()`, the host's own token is a static colour) — it only
+ *  misses on a host that exposes neither, and then the neutral the plugin builds
+ *  for the effective scheme stands in so the band still tracks the label ink. */
+function captionFill(src: Record<string, string> | null): string {
+  const sampled = src?.['--dsw-specific-sidebar-fill']
+  if (sampled !== undefined) return sampled
+  if (paletteTokens() === null && rBgDark() === null) return ''
+  const dark = rScheme() === 'dark'
+  return genTokens(220, 0.04, dark ? 0.14 : 0.92, dark ? 'dark' : 'light').tokens['--dsw-specific-sidebar-fill'] ?? ''
+}
+
+/** Write the caption rule and mark the frame it targets. The frame is the
+ *  plugin's own discovery (`discoverParts`), not a guessed hashed class name. The
+ *  probe selector is a verified shape: an inline style that mentions the sidebar
+ *  token on a body-level span is the desktop preload's caption probe and nothing
+ *  else, so no match means no desktop caption and the rule is inert. */
+function applyNativeCaption(surfaces?: Record<string, string> | null): void {
+  if (!document.documentElement.hasAttribute('data-windows-titlebar')) return
+  const src = surfaces === undefined ? (paletteTokens() ?? readHostOpacityTokens()) : surfaces
+  const fill = captionFill(src)
+  const css = fill === '' ? '' : `${WCO_PROBE_SEL}{--dsw-specific-sidebar-fill:${fill}}` +
+    `[data-windows-titlebar] .${CAPTION_FRAME_CLASS}::before{background:${fill}!important}`
+  const el = ensureWcoStyle()
+  if (el.textContent !== css) el.textContent = css
+  discoverParts()
+  if (frameEl === null) return
+  if (css === '') frameEl.classList.remove(CAPTION_FRAME_CLASS)
+  else frameEl.classList.add(CAPTION_FRAME_CLASS)
+}
 
 /** Mirror of the bg-part blur on :root. --dsh-any-part-blur is element-scoped
  *  to the columns, so surfaces outside their subtree (the mobile header, or
@@ -1084,6 +1312,8 @@ export const STROKE_RULE = [
   // the seat takeover cards belong to this slider too (see inputBlurRule)
   `${COMPOSER_TAKEOVER_CARD},${COMPOSER_TAKEOVER_EDITOR}` +
   `{-webkit-text-stroke:var(--dsh-any-stroke-input-w,0px) var(--dsh-any-stroke-input-c,transparent);paint-order:stroke fill}`,
+  // session header bar (its title, actions and view tabs inherit from the row)
+  `.${HEADER_BAR_CLASS}{-webkit-text-stroke:var(--dsh-any-stroke-headerBar-w,0px) var(--dsh-any-stroke-headerBar-c,transparent);paint-order:stroke fill}`,
   // chat message column
   `[data-chat-flow]{-webkit-text-stroke:var(--dsh-any-stroke-chat-w,0px) var(--dsh-any-stroke-chat-c,transparent);paint-order:stroke fill}`,
   // trajectory view
@@ -1164,7 +1394,7 @@ export const STROKE_RULE = [
  *  versus every group served by the static STROKE_RULE selectors. */
 const STROKE_INLINE_GROUPS = ['bg', 'sidebar'] as const
 type StrokeGroup = keyof PartBlurs
-const STROKE_VAR_GROUPS: StrokeGroup[] = ['card', 'settings', 'chat', 'trajectory', 'input', 'panel', 'produced', 'header']
+const STROKE_VAR_GROUPS: StrokeGroup[] = ['card', 'settings', 'chat', 'trajectory', 'input', 'panel', 'produced', 'header', 'headerBar']
 
 /** Resolve one group's stroke color key into a concrete CSS color.
  *  'auto' contrasts the FONT direction (white fonts → black stroke and vice
@@ -1801,6 +2031,12 @@ export function applyPartBlurs(blurs: PartBlurs): void {
   applyPanelBlur(blurs.panel)
   applyProduced()
   applyHeaderPopovers()
+  // Re-claims the session header bar: a conversation switch remounts the row, and
+  // the class has to land on the element the host just created.
+  applyHeaderBar()
+  // Same for the Windows caption band: the frame can be rebuilt with the rest of
+  // the shell, and the pin has to land on the element the host just created.
+  applyNativeCaption()
   applyViewCards()
 }
 
@@ -1835,6 +2071,7 @@ export function setPartBlur(part: keyof PartBlurs, v: number): void {
   if (part === 'panel') { applyPanelBlur(v); return }
   if (part === 'produced') { applyProduced(); return }
   if (part === 'header') { applyHeaderPopovers(); return }
+  if (part === 'headerBar') { applyHeaderBar(); return }
   if (part === 'chat' || part === 'trajectory') { applyViewCards(); return }
   discoverParts()
   if (part === 'bg') { setBlur(centerEl, v); applyBgBlurGlobal(v) }
@@ -2156,9 +2393,21 @@ function columnsPresent(): boolean {
     && document.body.contains(frameEl) && document.body.contains(centerEl)
 }
 
+/** The composer seat's elected takeover card (approval / plan review / question)
+ *  when one is mounted. It is not a view, but it shares the view cards' problem:
+ *  the host mounts a fresh element when a takeover is elected, and the pass
+ *  signature alone would skip that pass — `applyTakeoverFrost` rides
+ *  `applyInputBlur` — leaving the new card bare until a slider moves. Scoped to
+ *  the center column exactly like the view markers, because this query runs on
+ *  every coalesced mutation burst, including token streaming. */
+function probeTakeoverCard(): HTMLElement | null {
+  if (centerEl === null || !document.body.contains(centerEl)) return null
+  return centerEl.querySelector<HTMLElement>(COMPOSER_TAKEOVER_CARD)
+}
+
 /** Snapshot of every surface the pass would style, for the identity check. */
 function targetsNow(): (HTMLElement | null)[] {
-  return [frameEl, sidebarEl, centerEl, rightEl, ...viewTargets]
+  return [frameEl, sidebarEl, centerEl, rightEl, ...viewTargets, probeTakeoverCard()]
 }
 
 /** Watch for the AppFrame mounting so persisted blurs land even when the shell
@@ -2591,6 +2840,16 @@ export function teardownWp(): void {
     }
   }
   document.documentElement.classList.remove(INPUT_FROST_CLASS)
+  // Hand the seat takeover cards back untouched — the inline `position` this
+  // pass may have written included (typed teardown, so no observer will).
+  applyTakeoverFrost(0)
+  // The header bar, the Windows caption band and the pinned probe go back to the
+  // host: the classes come off, the two part variables and the rules are dropped.
+  document.documentElement.style.removeProperty('--dsh-any-op-header-bar')
+  document.documentElement.style.removeProperty('--dsh-any-blur-header-bar')
+  document.querySelectorAll(`.${HEADER_BAR_CLASS}`).forEach(el => el.classList.remove(HEADER_BAR_CLASS))
+  frameEl?.classList.remove(CAPTION_FRAME_CLASS)
+  wcoStyleEl?.remove(); wcoStyleEl = null
   document.documentElement.style.removeProperty('--dsh-any-blur-panel')
   document.documentElement.style.removeProperty('--dsh-any-blur-prod')
   document.documentElement.style.removeProperty('--dsh-any-prod-pct')

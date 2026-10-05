@@ -23,6 +23,7 @@
  */
 import {
   FRAME_CLEAR_RULE,
+  HEADER_BAR_RULE,
   MOBILE_HEADER_RULE,
   PANEL_TOKEN_RULE,
   PLACEHOLDER_RULE,
@@ -76,6 +77,9 @@ export function buildStaticStyles(): string {
     + TRAJECTORY_STYLE_RULE
     + inputBlurRule() // ← adapter: the same fill tokens scoped to the input slider
     + MOBILE_HEADER_RULE
+    // The session header bar's paint: the class is claimed at runtime, the
+    // variables by applyHeaderBar (see HEADER_BAR_RULE).
+    + HEADER_BAR_RULE
     + PANEL_TOKEN_RULE
     + panel.promotion // ← adapter: panel geometry, whose target element changed
     + panel.blur // ← adapter: ditto

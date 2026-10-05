@@ -1,10 +1,10 @@
 import type { CSSProperties, ComponentType } from 'react'
 import type { ThemeSectionProps, ThemeStoreState, PartOpacities, PartBlurs } from '../../types'
-import { cfg, rOps, rSop, rBlurs, rChatTextOpacity, rTrajectoryOpacity, rPanelOpacity, rProducedOpacity, rHeaderOpacity } from '../../state'
+import { cfg, rOps, rSop, rBlurs, rChatTextOpacity, rTrajectoryOpacity, rPanelOpacity, rProducedOpacity, rHeaderOpacity, rHeaderBarOpacity } from '../../state'
 import { saveConfig } from '../../rpc'
-import { applyCustomTokens, applySettingsOverrides, setPartBlur, applyViewCards, applyTrajectoryOverrides, applyPanelOverrides, applyProduced, applyHeaderPopovers } from '../../wallpaper'
+import { applyCustomTokens, applySettingsOverrides, setPartBlur, applyViewCards, applyTrajectoryOverrides, applyPanelOverrides, applyProduced, applyHeaderPopovers, applyHeaderBar } from '../../wallpaper'
 import { LiveSlider } from '../LiveSlider'
-import { CanvasIcon, SidebarIcon, ChatIcon, GearIcon, TextIcon, TrajectoryIcon, InputIcon, PanelIcon } from '../icons'
+import { CanvasIcon, SidebarIcon, ChatIcon, GearIcon, TextIcon, TrajectoryIcon, InputIcon, PanelIcon, HeaderBarIcon } from '../icons'
 
 interface PartDef {
   labelKey: string
@@ -23,6 +23,9 @@ interface PartDef {
   isProduced?: boolean
   /** Header popovers (Agent Team panel + background-job list): opacity + blur. */
   isHeader?: boolean
+  /** Session header bar (the conversation's title / actions / view tabs):
+   *  opacity + blur. Inert where the host renders that slot bare. */
+  isHeaderBar?: boolean
 }
 
 const PARTS: PartDef[] = [
@@ -35,6 +38,7 @@ const PARTS: PartDef[] = [
   { isTrajectory: true, labelKey: 'uiTrajectory', Icon: TrajectoryIcon },
   { isProduced: true, labelKey: 'uiProduced', Icon: TextIcon },
   { isHeader: true, labelKey: 'uiHeader', Icon: PanelIcon },
+  { isHeaderBar: true, labelKey: 'uiHeaderBar', Icon: HeaderBarIcon },
   { isPanel: true, labelKey: 'uiPanelNative', Icon: PanelIcon },
 ]
 
@@ -60,7 +64,7 @@ export function InterfacePage({ p }: { p: ThemeSectionProps }) {
 
       <div className="dab-grid-parts">
         {PARTS.map((part, i) => {
-          const { labelKey, Icon, isSettings, isChat, isTrajectory, isPanel, isProduced, isHeader } = part
+          const { labelKey, Icon, isSettings, isChat, isTrajectory, isPanel, isProduced, isHeader, isHeaderBar } = part
           const opKey = part.opKey
           const label = t(labelKey)
           // Homepage parts (bg/sidebar/card/input) bind to their own part only;
@@ -76,8 +80,8 @@ export function InterfacePage({ p }: { p: ThemeSectionProps }) {
           // Every homepage opKey is also a PartBlurs
           // key (input included), so the shared blur slider dereferences it
           // directly.
-          const blurKey: keyof PartBlurs = isChat ? 'chat' : isTrajectory ? 'trajectory' : isSettings ? 'settings' : isPanel ? 'panel' : isProduced ? 'produced' : isHeader ? 'header' : opKey!
-          const opacity = isChat ? rChatTextOpacity() : isTrajectory ? rTrajectoryOpacity() : isSettings ? rSop() : isPanel ? rPanelOpacity() : isProduced ? rProducedOpacity() : isHeader ? rHeaderOpacity() : rOps()[opKey!]
+          const blurKey: keyof PartBlurs = isChat ? 'chat' : isTrajectory ? 'trajectory' : isSettings ? 'settings' : isPanel ? 'panel' : isProduced ? 'produced' : isHeader ? 'header' : isHeaderBar ? 'headerBar' : opKey!
+          const opacity = isChat ? rChatTextOpacity() : isTrajectory ? rTrajectoryOpacity() : isSettings ? rSop() : isPanel ? rPanelOpacity() : isProduced ? rProducedOpacity() : isHeader ? rHeaderOpacity() : isHeaderBar ? rHeaderBarOpacity() : rOps()[opKey!]
           return (
             <section key={blurKey} className="dab-card dab-card-hover dab-rise" style={{ '--d': i + 1 } as CSSProperties}>
               <div className="dab-part-head">
@@ -108,6 +112,9 @@ export function InterfacePage({ p }: { p: ThemeSectionProps }) {
                   } else if (isHeader) {
                     cfg.headerOpacity = op
                     applyHeaderPopovers()
+                  } else if (isHeaderBar) {
+                    cfg.headerBarOpacity = op
+                    applyHeaderBar()
                   } else {
                     const ops = { ...rOps() }
                     ops[opKey!] = op
@@ -137,6 +144,10 @@ export function InterfacePage({ p }: { p: ThemeSectionProps }) {
                   } else if (isHeader) {
                     cfg.headerOpacity = op
                     applyHeaderPopovers()
+                    saveConfig()
+                  } else if (isHeaderBar) {
+                    cfg.headerBarOpacity = op
+                    applyHeaderBar()
                     saveConfig()
                   } else {
                     const ops = { ...rOps() }

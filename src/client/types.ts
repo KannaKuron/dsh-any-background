@@ -85,6 +85,9 @@ export interface PartBlurs {
   produced: number
   /** Header popovers: the Agent Team panel and the background-job list. */
   header: number
+  /** Session header bar — the conversation's title / actions / view-tab row.
+   *  Inert where the host renders that slot bare (before 0.1.7-alpha.1). */
+  headerBar: number
 }
 
 /** Text-stroke color of one surface group. A preset key plus the free color
@@ -127,6 +130,8 @@ export interface ProfileAppearance {
   producedOpacity: number
   /** Opacity of the header popovers (Agent Team panel + job list). */
   headerOpacity: number
+  /** Opacity of the session header bar (inert on hosts that render the slot bare). */
+  headerBarOpacity: number
 }
 
 /** A named, saved appearance profile. */
@@ -253,6 +258,8 @@ export interface ThemeConfig {
   producedOpacity: number
   /** Opacity of the header popovers (Agent Team panel + job list). */
   headerOpacity: number
+  /** Opacity of the session header bar (inert on hosts that render the slot bare). */
+  headerBarOpacity: number
   /** Saved appearance profiles. */
   profiles: ProfileEntry[]
   /** Wallpaper rotation pool + cadence. */

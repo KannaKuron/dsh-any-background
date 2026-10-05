@@ -11,7 +11,7 @@ export interface BuiltinPreset {
   appearance: ProfileAppearance
 }
 
-const zeroBlurs = { bg: 0, sidebar: 0, card: 0, settings: 0, chat: 0, trajectory: 0, input: 0, panel: 0, produced: 0, header: 0 }
+const zeroBlurs = { bg: 0, sidebar: 0, card: 0, settings: 0, chat: 0, trajectory: 0, input: 0, panel: 0, produced: 0, header: 0, headerBar: 0 }
 
 /** Presets ship with strokes off — text outlines are an opt-in look. Fresh
  *  objects per call so a profile restore can never alias another preset's
@@ -21,6 +21,7 @@ const zeroStrokes = (): PartStrokes => {
   return {
     bg: off(), sidebar: off(), card: off(), settings: off(), chat: off(),
     trajectory: off(), input: off(), panel: off(), produced: off(), header: off(),
+    headerBar: off(),
   }
 }
 
@@ -40,6 +41,7 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
       panelOpacity: 1,
       producedOpacity: 1,
       headerOpacity: 1,
+      headerBarOpacity: 0.85,
     },
   },
   {
@@ -58,6 +60,7 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
       panelOpacity: 0.85,
       producedOpacity: 1,
       headerOpacity: 1,
+      headerBarOpacity: 0.62,
     },
   },
   {
@@ -76,6 +79,7 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
       panelOpacity: 1,
       producedOpacity: 1,
       headerOpacity: 1,
+      headerBarOpacity: 0.97,
     },
   },
   {
@@ -94,6 +98,7 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
       panelOpacity: 0.8,
       producedOpacity: 1,
       headerOpacity: 1,
+      headerBarOpacity: 0.5,
     },
   },
   {
@@ -112,6 +117,7 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
       panelOpacity: 0.75,
       producedOpacity: 1,
       headerOpacity: 1,
+      headerBarOpacity: 0.42,
     },
   },
   {
@@ -130,6 +136,7 @@ export const BUILTIN_PRESETS: BuiltinPreset[] = [
       panelOpacity: 1,
       producedOpacity: 1,
       headerOpacity: 1,
+      headerBarOpacity: 0.92,
     },
   },
 ]

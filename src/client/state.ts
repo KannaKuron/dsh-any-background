@@ -12,7 +12,7 @@ export const DEFAULT_CONFIG: ThemeConfig = {
   opacities: { bg: 0, sidebar: 0.5, card: 0.5, input: 0.5 },
   // Blur sliders are px-based (0–60), so 50% of their range is 30px — except the
   // bg pair above and below, which start untouched.
-  blurs: { bg: 0, sidebar: 30, card: 30, settings: 30, chat: 30, trajectory: 30, input: 30, panel: 30, produced: 30, header: 30 },
+  blurs: { bg: 0, sidebar: 30, card: 30, settings: 30, chat: 30, trajectory: 30, input: 30, panel: 30, produced: 30, header: 30, headerBar: 30 },
   strokes: {
     bg: { width: 0, color: 'auto', customColor: '#808080' },
     sidebar: { width: 0, color: 'auto', customColor: '#808080' },
@@ -24,6 +24,7 @@ export const DEFAULT_CONFIG: ThemeConfig = {
     panel: { width: 0, color: 'auto', customColor: '#808080' },
     produced: { width: 0, color: 'auto', customColor: '#808080' },
     header: { width: 0, color: 'auto', customColor: '#808080' },
+    headerBar: { width: 0, color: 'auto', customColor: '#808080' },
   },
   settingsOpacity: 0.5,
   // 100% = the background picture untouched. Deliberately NOT part of the
@@ -49,6 +50,7 @@ export const DEFAULT_CONFIG: ThemeConfig = {
   panelOpacity: 0.5,
   producedOpacity: 0.5,
   headerOpacity: 0.5,
+  headerBarOpacity: 0.5,
   profiles: [],
   rotation: { enabled: false, mode: 'shuffle', interval: 'daily', current: 0, items: [], lastRotate: null },
   schedule: { enabled: false, mode: 'time', dayProfile: null, nightProfile: null, dayStart: '07:00', nightStart: '19:00' },
@@ -151,14 +153,14 @@ export function rOps(): PartOpacities {
 export function rBlurs(): PartBlurs {
   const b = cfg.blurs ?? {}
   const out = {} as PartBlurs
-  for (const k of ['bg', 'sidebar', 'card', 'settings', 'chat', 'trajectory', 'input', 'panel', 'produced', 'header'] as const) {
+  for (const k of ['bg', 'sidebar', 'card', 'settings', 'chat', 'trajectory', 'input', 'panel', 'produced', 'header', 'headerBar'] as const) {
     const v = b[k]
     out[k] = typeof v === 'number' ? Math.min(60, Math.max(0, v)) : DEFAULT_CONFIG.blurs[k]
   }
   return out
 }
 
-const STROKE_GROUPS = ['bg', 'sidebar', 'card', 'settings', 'chat', 'trajectory', 'input', 'panel', 'produced', 'header'] as const
+const STROKE_GROUPS = ['bg', 'sidebar', 'card', 'settings', 'chat', 'trajectory', 'input', 'panel', 'produced', 'header', 'headerBar'] as const
 const STROKE_COLOR_KEYS = ['auto', 'gray', 'black', 'white', 'theme', 'custom'] as const
 const HEX_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 const DEFAULT_STROKE: StrokeConfig = { width: 0, color: 'auto', customColor: '#808080' }
@@ -191,6 +193,7 @@ export function rSop(): number { return clamp01(cfg.settingsOpacity, DEFAULT_CON
 export function rPanelOpacity(): number { return clamp01(cfg.panelOpacity, DEFAULT_CONFIG.panelOpacity) }
 export function rProducedOpacity(): number { return clamp01(cfg.producedOpacity, DEFAULT_CONFIG.producedOpacity) }
 export function rHeaderOpacity(): number { return clamp01(cfg.headerOpacity, DEFAULT_CONFIG.headerOpacity) }
+export function rHeaderBarOpacity(): number { return clamp01(cfg.headerBarOpacity, DEFAULT_CONFIG.headerBarOpacity) }
 export function rBgState(): BgState { return cfg.bgState }
 export function rVideoBgState(): BgState { return cfg.videoBgState }
 
@@ -248,6 +251,7 @@ export function currentAppearance(): ProfileAppearance {
     panelOpacity: rPanelOpacity(),
     producedOpacity: rProducedOpacity(),
     headerOpacity: rHeaderOpacity(),
+    headerBarOpacity: rHeaderBarOpacity(),
   }
 }
 
@@ -265,6 +269,7 @@ export function applyAppearance(ap: ProfileAppearance): void {
   cfg.panelOpacity = clamp01(ap.panelOpacity, DEFAULT_CONFIG.panelOpacity)
   cfg.producedOpacity = clamp01(ap.producedOpacity, DEFAULT_CONFIG.producedOpacity)
   cfg.headerOpacity = clamp01(ap.headerOpacity, DEFAULT_CONFIG.headerOpacity)
+  cfg.headerBarOpacity = clamp01(ap.headerBarOpacity, DEFAULT_CONFIG.headerBarOpacity)
 }
 
 const num = (n: unknown, def: number): number => typeof n === 'number' ? n : def
@@ -298,6 +303,7 @@ function adoptProfiles(raw: unknown): ProfileEntry[] {
         panelOpacity: clamp01(ac.panelOpacity, DEFAULT_CONFIG.panelOpacity),
         producedOpacity: clamp01(ac.producedOpacity, DEFAULT_CONFIG.producedOpacity),
         headerOpacity: clamp01(ac.headerOpacity, DEFAULT_CONFIG.headerOpacity),
+        headerBarOpacity: clamp01(ac.headerBarOpacity, DEFAULT_CONFIG.headerBarOpacity),
       },
     })
   }
@@ -359,7 +365,7 @@ export function adoptConfig(raw: unknown): void {
   const ops = (c.opacities ?? {}) as Partial<PartOpacities>
   const bl = (c.blurs ?? {}) as Partial<PartBlurs>
   const blurs = {} as PartBlurs
-  for (const k of ['bg', 'sidebar', 'card', 'settings', 'chat', 'trajectory', 'input', 'panel', 'produced', 'header'] as const) {
+  for (const k of ['bg', 'sidebar', 'card', 'settings', 'chat', 'trajectory', 'input', 'panel', 'produced', 'header', 'headerBar'] as const) {
     blurs[k] = num(bl[k], DEFAULT_CONFIG.blurs[k])
   }
   const bgType = ['video', 'mesh', 'shader', 'pattern'].includes(c.backgroundType as string)
@@ -398,6 +404,7 @@ export function adoptConfig(raw: unknown): void {
     panelOpacity: clamp01(c.panelOpacity, DEFAULT_CONFIG.panelOpacity),
     producedOpacity: clamp01(c.producedOpacity, DEFAULT_CONFIG.producedOpacity),
     headerOpacity: clamp01(c.headerOpacity, DEFAULT_CONFIG.headerOpacity),
+    headerBarOpacity: clamp01(c.headerBarOpacity, DEFAULT_CONFIG.headerBarOpacity),
     profiles: adoptProfiles(c.profiles),
     rotation: adoptRotation(c.rotation),
     schedule: adoptSchedule(c.schedule),

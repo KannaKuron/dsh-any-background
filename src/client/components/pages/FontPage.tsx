@@ -7,7 +7,7 @@ import { setPartStroke } from '../../wallpaper'
 import { LiveSlider } from '../LiveSlider'
 import {
   CanvasIcon, SidebarIcon, ChatIcon, GearIcon, TextIcon, TrajectoryIcon,
-  InputIcon, PanelIcon, TrashIcon, UploadIcon,
+  InputIcon, PanelIcon, HeaderBarIcon, TrashIcon, UploadIcon,
 } from '../icons'
 
 /**
@@ -36,6 +36,7 @@ const PARTS: PartDef[] = [
   { key: 'trajectory', labelKey: 'uiTrajectory', Icon: TrajectoryIcon },
   { key: 'produced', labelKey: 'uiProduced', Icon: TextIcon },
   { key: 'header', labelKey: 'uiHeader', Icon: PanelIcon },
+  { key: 'headerBar', labelKey: 'uiHeaderBar', Icon: HeaderBarIcon },
   { key: 'panel', labelKey: 'uiPanelNative', Icon: PanelIcon },
 ]
 
