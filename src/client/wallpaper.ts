@@ -607,11 +607,30 @@ export const MOBILE_HEADER_RULE =
 const HEADER_BAR_CLASS = 'dab-header-bar'
 const HEADER_BAR_ANCHOR = '[data-slot^="conversation.session.header"]'
 
-/** The session header bar, or null where this host has no such element. */
+/** The session header bar, or null where this host has no such element.
+ *
+ *  A BLANK session is excluded. `ConversationHeader` marks that row
+ *  `headerBlank`, whose rule zeroes its min-height and drops its bottom rule, so
+ *  the host paints nothing there and only the row's padding plus the corner
+ *  control remain. Claiming it paints a bar over a row the host deliberately
+ *  leaves empty — the box that appeared on a fresh session (0.2.0-rc.2). Matched
+ *  by the CSS-module LOCAL name: the hash prefix is build-specific, the suffix is
+ *  not, and a host that never emits the marker keeps the old behaviour. */
 function discoverHeaderBar(): HTMLElement | null {
   if (centerEl === null || !document.body.contains(centerEl)) return null
   const bar = centerEl.querySelector(HEADER_BAR_ANCHOR)?.closest('header')
-  return bar instanceof HTMLElement ? bar : null
+  if (!(bar instanceof HTMLElement)) return null
+  if (bar.className.includes('headerBlank')) return null
+  return bar
+}
+
+/** Exactly one owner: the row the current conversation mounted. A row that went
+ *  blank, or one the host replaced, must not keep a class from an earlier pass. */
+let headerBarEl: HTMLElement | null = null
+function claimHeaderBar(bar: HTMLElement | null): void {
+  if (headerBarEl !== null && headerBarEl !== bar) headerBarEl.classList.remove(HEADER_BAR_CLASS)
+  headerBarEl = bar
+  if (bar !== null) bar.classList.add(HEADER_BAR_CLASS)
 }
 
 /** The bar's paint. The variables are written by `applyHeaderBar`; the class is
@@ -623,27 +642,42 @@ export const HEADER_BAR_RULE =
   'backdrop-filter:var(--dsh-any-blur-header-bar,none);' +
   '-webkit-backdrop-filter:var(--dsh-any-blur-header-bar,none)}'
 
+/** The 「标题栏」card's paint: the card's material at the card's opacity, empty
+ *  where the plugin is not theming. The conversation header row, the Windows
+ *  caption band, and — through the desktop preload's probe — the native
+ *  minimize/maximize/close block all read this one value. */
+function headerBarPaint(src?: Record<string, string> | null): string {
+  const map = src === undefined ? (paletteTokens() ?? readHostOpacityTokens()) : src
+  const base = map?.['--dsw-alias-bg-base']
+  return base === undefined ? '' : toRgba(base, rHeaderBarOpacity())
+}
+
 /** Claim the bar and write its material + frost. `surfaces` arrives from the token
  *  funnel, which already has the resolved source list; the settings sliders and the
  *  parts pass call it without one and the sources are re-resolved here. */
 export function applyHeaderBar(surfaces?: Record<string, string> | null): void {
   const src = surfaces === undefined ? (paletteTokens() ?? readHostOpacityTokens()) : surfaces
-  const base = src?.['--dsw-alias-bg-base']
   const root = document.documentElement
   discoverParts()
   const bar = discoverHeaderBar()
-  if (base === undefined) {
+  const paint = headerBarPaint(src)
+  if (paint === '') {
     // Not theming (no picked color, no wallpaper verdict): not our row.
-    if (bar !== null) bar.classList.remove(HEADER_BAR_CLASS)
+    claimHeaderBar(null)
     root.style.removeProperty('--dsh-any-op-header-bar')
     root.style.removeProperty('--dsh-any-blur-header-bar')
+    applyNativeCaption(surfaces)
     return
   }
-  root.style.setProperty('--dsh-any-op-header-bar', toRgba(base, rHeaderBarOpacity()))
+  root.style.setProperty('--dsh-any-op-header-bar', paint)
   const px = rBlurs().headerBar
   if (px > 0) root.style.setProperty('--dsh-any-blur-header-bar', `blur(${px}px)`)
   else root.style.removeProperty('--dsh-any-blur-header-bar')
-  if (bar !== null) bar.classList.add(HEADER_BAR_CLASS)
+  claimHeaderBar(bar)
+  // The native button block is painted from the color the desktop preload measures
+  // off its probe, and the probe carries this paint as a literal, so a slider move
+  // has to rewrite the band's rule text for the preload to re-measure it.
+  applyNativeCaption(surfaces)
 }
 
 // ── Windows desktop caption band + native window-controls block ───────────────
@@ -660,27 +694,34 @@ export function applyHeaderBar(surfaces?: Record<string, string> | null): void {
 //     drawn by Windows and not by the page — is colored by that same preload,
 //     which MEASURES `--dsw-specific-sidebar-fill` and `--dsw-alias-label-primary`
 //     off a probe span it appends to <body> and ships them over
-//     `dsh-desktop:windows-appearance`. There is no page-callable IPC and the
-//     `dshDesktop` bridge exposes none, so those measured tokens ARE the plugin's
-//     entire lever on that block. A caption is a window colour, not a page
-//     surface: the platform draws it as ONE OPAQUE COLOR, so a translucent band
-//     and the block can never agree (symptom 2).
-// The answer is to treat the band as material at FULL strength and to feed the
-// host's probe the same literal, which makes the block show the band's color
-// instead of the sidebar slider's alpha. The material is the palette's sidebar
-// fill when a color was picked and the neutral the plugin would build for the
-// effective scheme otherwise, so its direction always matches the label ink the
-// plugin is asserting (see the label flip in `applyCustomTokensNow`): the menubar
-// inherits that ink and the measured `--dsw-alias-label-primary` — the glyph color
-// of the native buttons — is the same ink, so both stay readable on the band in
-// either direction.
-// NOT a settings part: the band is window chrome with no slider of its own, so
-// nothing in the panel writes it — the 「标题栏」 opacity/blur pair owns the
-// conversation's own header row instead (see `applyHeaderBar`). Inert where the
-// preload did not mark the document, and no declaration at all where the plugin
-// is not theming (no picked color, no wallpaper verdict), so a stock install's
-// caption keeps the host's own look.
+//     `dsh-desktop:windows-appearance`; main.ts forwards both to
+//     `setTitleBarOverlay` and its guard accepts an `rgba()` value. There is no
+//     page-callable IPC and the `dshDesktop` bridge exposes none, so those
+//     measured tokens ARE the plugin's entire lever on that block.
+// The band is BOUND to the 「标题栏」card: its paint is the card's material at the
+// card's opacity, and its frost reads the card's blur variable
+// (`--dsh-any-blur-header-bar`), so the one opacity/blur pair drives the caption
+// band and the conversation header row together.
+// The probe is handed `transparent`, so Windows paints the block with NO
+// background of its own. The band already spans the full caption width at exactly
+// the overlay's height (`.frame::before` is `inset: 0 0 auto` at
+// `--dsh-windows-titlebar-height`, 40px), so the block IS the band — one
+// continuous surface, matching at every opacity. Handing the probe the card's
+// paint instead, which this did first, makes Windows draw each button its own
+// translucent patch and the three stack into a lighter, visibly segmented block.
+// The glyphs are a SEPARATE measurement off the same probe
+// (`--dsw-alias-label-primary`, the label ink the plugin asserts — see the label
+// flip in `applyCustomTokensNow`), so they stay opaque and readable over whatever
+// the band is doing.
+// The same pass squares the content column's top-left corner. `AppFrame` rounds
+// `.centerCol`'s top-left by 16px and clips its overflow; with the frame cleared
+// to show the wallpaper, that notch lets the wallpaper through under the
+// conversation header's first pixels (measured live on 0.2.0-rc.2).
+// Inert where the preload did not mark the document, and no declaration at all
+// where the plugin is not theming (no picked color, no wallpaper verdict), so a
+// stock install's caption keeps the host's own look.
 const CAPTION_FRAME_CLASS = 'dab-frame-caption'
+const FLAT_CENTER_CLASS = 'dab-center-flat'
 const WCO_PROBE_SEL = 'body > span[style*="--dsw-specific-sidebar-fill"]'
 
 let wcoStyleEl: HTMLStyleElement | null = null
@@ -715,14 +756,24 @@ function applyNativeCaption(surfaces?: Record<string, string> | null): void {
   if (!document.documentElement.hasAttribute('data-windows-titlebar')) return
   const src = surfaces === undefined ? (paletteTokens() ?? readHostOpacityTokens()) : surfaces
   const fill = captionFill(src)
-  const css = fill === '' ? '' : `${WCO_PROBE_SEL}{--dsw-specific-sidebar-fill:${fill}}` +
-    `[data-windows-titlebar] .${CAPTION_FRAME_CLASS}::before{background:${fill}!important}`
+  const paint = headerBarPaint(src) || fill
+  const css = fill === '' ? '' : `${WCO_PROBE_SEL}{--dsw-specific-sidebar-fill:transparent}` +
+    `[data-windows-titlebar] .${CAPTION_FRAME_CLASS}::before{` +
+    `background:var(--dsh-any-op-header-bar,${paint})!important;` +
+    `backdrop-filter:var(--dsh-any-blur-header-bar,none);` +
+    `-webkit-backdrop-filter:var(--dsh-any-blur-header-bar,none)}` +
+    `[data-windows-titlebar] .${FLAT_CENTER_CLASS}{border-top-left-radius:0!important}`
   const el = ensureWcoStyle()
   if (el.textContent !== css) el.textContent = css
   discoverParts()
   if (frameEl === null) return
-  if (css === '') frameEl.classList.remove(CAPTION_FRAME_CLASS)
-  else frameEl.classList.add(CAPTION_FRAME_CLASS)
+  if (css === '') {
+    frameEl.classList.remove(CAPTION_FRAME_CLASS)
+    centerEl?.classList.remove(FLAT_CENTER_CLASS)
+  } else {
+    frameEl.classList.add(CAPTION_FRAME_CLASS)
+    centerEl?.classList.add(FLAT_CENTER_CLASS)
+  }
 }
 
 /** Mirror of the bg-part blur on :root. --dsh-any-part-blur is element-scoped
@@ -2843,12 +2894,15 @@ export function teardownWp(): void {
   // Hand the seat takeover cards back untouched — the inline `position` this
   // pass may have written included (typed teardown, so no observer will).
   applyTakeoverFrost(0)
-  // The header bar, the Windows caption band and the pinned probe go back to the
-  // host: the classes come off, the two part variables and the rules are dropped.
+  // The header bar, the Windows caption band, the squared content corner and the
+  // pinned probe go back to the host: the classes come off, the two part variables
+  // and the rules are dropped.
   document.documentElement.style.removeProperty('--dsh-any-op-header-bar')
   document.documentElement.style.removeProperty('--dsh-any-blur-header-bar')
   document.querySelectorAll(`.${HEADER_BAR_CLASS}`).forEach(el => el.classList.remove(HEADER_BAR_CLASS))
+  headerBarEl = null
   frameEl?.classList.remove(CAPTION_FRAME_CLASS)
+  document.querySelectorAll(`.${FLAT_CENTER_CLASS}`).forEach(el => el.classList.remove(FLAT_CENTER_CLASS))
   wcoStyleEl?.remove(); wcoStyleEl = null
   document.documentElement.style.removeProperty('--dsh-any-blur-panel')
   document.documentElement.style.removeProperty('--dsh-any-blur-prod')
