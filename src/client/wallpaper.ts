@@ -1,5 +1,5 @@
 import { MENU_FILL_TOKEN, PANEL_SURFACES, BETTER_SIDEBAR_PANEL, COMPOSER_TAKEOVER_CARD, COMPOSER_TAKEOVER_EDITOR, elementFrostDecl } from './host-compat/versions/shared'
-import { isColumnSpanning, layersToBackground, layersToBlur, type CaptionLayer } from './caption-layers'
+import { captionMaskRules, isColumnSpanning, layersToBackground, layersToBlur, type CaptionLayer } from './caption-layers'
 import { hostAdapter } from './host-compat/capabilities'
 import { HEADER_POPOVER_ATTR } from './header-tag'
 import { rWp, rWpImage, rWpVideo, rBgState, rVideoBgState, rBl, rWop, rOps, rSop, rStrokes, rColor, rHasColor, rBlurs, rBgMode, rChatTextOpacity, rTrajectoryOpacity, rPanelOpacity, rProducedOpacity, rHeaderOpacity, rHeaderBarOpacity, rScheme, rColorScheme, rSchemeOverride, cfg, setWpUrl, rBgDark, setBgDark, disposeVideoObjectUrl } from './state'
@@ -730,9 +730,13 @@ const WCO_PROBE_SEL = 'body > span[style*="--dsw-specific-sidebar-fill"]'
 const CAPTION_SEG_CLASS = 'dab-caption-seg'
 /** Patch for the notch left by `.centerCol`'s 16px top-left radius. */
 const CAPTION_CORNER_CLASS = 'dab-caption-corner'
+/** Standing strip that carries the settings panel's mask up over the caption
+ *  (rules in `captionMaskRules`, shown only while that panel is mounted). */
+const CAPTION_MASK_CLASS = 'dab-caption-mask'
 
 let captionSegs: HTMLElement[] | null = null
 let captionCorner: HTMLElement | null = null
+let captionMask: HTMLElement | null = null
 
 let wcoStyleEl: HTMLStyleElement | null = null
 
@@ -872,6 +876,17 @@ function applyNativeCaption(surfaces?: Record<string, string> | null): void {
   discoverParts()
   const cols = [sidebarEl, centerEl, rightEl].filter((el): el is HTMLElement => el !== null)
 
+  /** Standing strip over the caption, so the settings panel's mask does not stop
+   *  one caption short of the top edge (see `captionMaskRules`). It lives on
+   *  `<body>` like the band overlays, and how it shows is entirely CSS: the host
+   *  portals that panel to `<body>`, so `:has()` sees it come and go without a
+   *  listener, an observer or a timer of ours. */
+  if (captionMask === null || !captionMask.isConnected) {
+    captionMask = document.createElement('div')
+    captionMask.className = CAPTION_MASK_CLASS
+    document.body.insertBefore(captionMask, document.body.firstChild)
+  }
+
   if (frameEl !== null && (captionSegs === null || captionSegs[0]?.isConnected !== true)) {
     document.querySelectorAll(`.${CAPTION_SEG_CLASS}`).forEach(el => el.remove())
     /** Inserted at the very front of `<body>` with a low z-index: the host's own
@@ -937,7 +952,11 @@ function applyNativeCaption(surfaces?: Record<string, string> | null): void {
     `-webkit-mask-image:radial-gradient(circle var(--dsh-windows-content-radius,16px) at 100% 100%,transparent 0 calc(var(--dsh-windows-content-radius,16px) - .5px),#000 var(--dsh-windows-content-radius,16px));` +
     `mask-image:radial-gradient(circle var(--dsh-windows-content-radius,16px) at 100% 100%,transparent 0 calc(var(--dsh-windows-content-radius,16px) - .5px),#000 var(--dsh-windows-content-radius,16px))}`
   const el = ensureWcoStyle()
-  if (el.textContent !== css) el.textContent = css
+  /** The mask strip's rules ride along outside the conditional block: they have
+   *  to hold even when the band itself is inert (`fill === ''`), because the
+   *  panel's bare caption is a defect on a stock-coloured install too. */
+  const sheet = css + captionMaskRules(CAPTION_MASK_CLASS)
+  if (el.textContent !== sheet) el.textContent = sheet
   if (frameEl === null) return
   if (css === '') {
     frameEl.classList.remove(CAPTION_FRAME_CLASS)
@@ -3089,6 +3108,8 @@ export function teardownWp(): void {
   captionSegs = null
   captionCorner?.remove()
   captionCorner = null
+  captionMask?.remove()
+  captionMask = null
   document.documentElement.style.removeProperty('--dab-sidebar-w')
   document.querySelectorAll(`.${FLAT_CENTER_CLASS}`).forEach(el => el.classList.remove(FLAT_CENTER_CLASS))
   wcoStyleEl?.remove(); wcoStyleEl = null

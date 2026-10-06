@@ -82,3 +82,37 @@ export function isColumnSpanning(
   if (column.width <= 0 || column.height <= 0) return false
   return rect.width >= column.width * 0.5 && rect.height >= column.height * 0.2
 }
+
+/** The rules for the strip that carries the settings panel's mask up over the
+ *  caption, given the class of the element they style.
+ *
+ *  The host insets that mask with `var(--dsh-frame-chrome-top)`, which on
+ *  Windows equals the caption height: the mask therefore starts one caption
+ *  below the top edge and the strip above it stays bare while everything else
+ *  dims. Three properties are load-bearing:
+ *
+ *   · the material is *read* from the host's own `--dsw-alias-bg-mask-1` /
+ *     `--dsw-mask-blur` rather than copied, so a host that retints or re-frosts
+ *     its mask carries this strip along;
+ *   · visibility is a CSS condition (`body:has(...)`) rather than a listener,
+ *     so there is no mount/unmount race to lose and nothing to poll — the strip
+ *     appears and disappears with the panel itself. A host too old for `:has()`
+ *     drops the declaration and leaves the element at `display:none`;
+ *   · `pointer-events:none` keeps the strip's hit test falling through to the
+ *     frame's `-webkit-app-region:drag` hot zone, so the window can still be
+ *     dragged by its caption while the panel is open. The window buttons are
+ *     painted by the OS (`titleBarOverlay`), so page content can neither cover
+ *     nor swallow them.
+ *
+ *  A `::before` on the host's own mask would have been one element cheaper and
+ *  does not work: `.mask` carries a `backdrop-filter`, which makes it a backdrop
+ *  root, and anything nested inside a backdrop root can only blur what is inside
+ *  that root. A pseudo-element hanging outside the mask's box therefore blurs
+ *  nothing — the strip came out dimmed but sharp, which is what the pixel
+ *  comparison showed. */
+export function captionMaskRules(className: string): string {
+  return `[data-windows-titlebar] .${className}{position:fixed;top:0;left:0;right:0;` +
+    `height:var(--dsh-windows-titlebar-height,40px);z-index:2;pointer-events:none;display:none;` +
+    `background:var(--dsw-alias-bg-mask-1);-webkit-backdrop-filter:var(--dsw-mask-blur);backdrop-filter:var(--dsw-mask-blur)}` +
+    `[data-windows-titlebar] body:has([class$="_overlay"]>[class$="_mask"]) .${className}{display:block}`
+}

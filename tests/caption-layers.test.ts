@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { isColumnSpanning, layersToBackground, layersToBlur, type CaptionLayer } from '../src/client/caption-layers.ts'
+import { captionMaskRules, isColumnSpanning, layersToBackground, layersToBlur, type CaptionLayer } from '../src/client/caption-layers.ts'
 
 const layer = (bg = '', blur = ''): CaptionLayer => ({ bg, blur })
 
@@ -55,4 +55,34 @@ test('a full-width content block stays out of the stack', () => {
 
 test('a tall narrow sidebar widget stays out of the stack', () => {
   assert.equal(isColumnSpanning({ width: 40, height: 1200 }, { width: 280, height: 1352 }), false)
+})
+
+// ── the settings-panel mask strip ───────────────────────────────────────────
+
+test('every mask rule stays scoped to the Windows caption', () => {
+  // The whole feature is Windows-only: macOS keeps its own window strip.
+  const rules = captionMaskRules('dab-caption-mask')
+  const selectors = rules.match(/[^{}]+\{/g) ?? []
+  assert.equal(selectors.length, 2)
+  for (const selector of selectors) assert.match(selector, /\[data-windows-titlebar\]/)
+})
+
+test('the mask strip never takes the pointer', () => {
+  // Without this the strip swallows the caption's hit test and the window can no
+  // longer be dragged by it while the panel is open.
+  assert.match(captionMaskRules('dab-caption-mask'), /pointer-events:none/)
+})
+
+test('the mask strip shows itself from CSS, not from a listener', () => {
+  // A listener/observer would race the panel's mount; `:has()` cannot.
+  const rules = captionMaskRules('dab-caption-mask')
+  assert.match(rules, /:has\(/)
+  assert.doesNotMatch(rules, /dsh-any/)
+})
+
+test('the mask material is read from the host tokens, not hard-coded', () => {
+  const rules = captionMaskRules('dab-caption-mask')
+  assert.match(rules, /var\(--dsw-alias-bg-mask-1\)/)
+  assert.match(rules, /var\(--dsw-mask-blur\)/)
+  assert.doesNotMatch(rules, /rgba?\(/)
 })
