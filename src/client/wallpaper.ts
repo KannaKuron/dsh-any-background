@@ -1,4 +1,5 @@
 import { MENU_FILL_TOKEN, PANEL_SURFACES, BETTER_SIDEBAR_PANEL, COMPOSER_TAKEOVER_CARD, COMPOSER_TAKEOVER_EDITOR, elementFrostDecl } from './host-compat/versions/shared'
+import { isColumnSpanning, layersToBackground, layersToBlur, type CaptionLayer } from './caption-layers'
 import { hostAdapter } from './host-compat/capabilities'
 import { HEADER_POPOVER_ATTR } from './header-tag'
 import { rWp, rWpImage, rWpVideo, rBgState, rVideoBgState, rBl, rWop, rOps, rSop, rStrokes, rColor, rHasColor, rBlurs, rBgMode, rChatTextOpacity, rTrajectoryOpacity, rPanelOpacity, rProducedOpacity, rHeaderOpacity, rHeaderBarOpacity, rScheme, rColorScheme, rSchemeOverride, cfg, setWpUrl, rBgDark, setBgDark, disposeVideoObjectUrl } from './state'
@@ -723,6 +724,15 @@ export function applyHeaderBar(surfaces?: Record<string, string> | null): void {
 const CAPTION_FRAME_CLASS = 'dab-frame-caption'
 const FLAT_CENTER_CLASS = 'dab-center-flat'
 const WCO_PROBE_SEL = 'body > span[style*="--dsw-specific-sidebar-fill"]'
+/** The band overlays. A pseudo-element allows only ONE `backdrop-filter`, so the
+ *  side column's segment and the content column's segment have to be separate
+ *  real elements to frost independently. */
+const CAPTION_SEG_CLASS = 'dab-caption-seg'
+/** Patch for the notch left by `.centerCol`'s 16px top-left radius. */
+const CAPTION_CORNER_CLASS = 'dab-caption-corner'
+
+let captionSegs: HTMLElement[] | null = null
+let captionCorner: HTMLElement | null = null
 
 let wcoStyleEl: HTMLStyleElement | null = null
 
@@ -747,32 +757,203 @@ function captionFill(src: Record<string, string> | null): string {
   return genTokens(220, 0.04, dark ? 0.14 : 0.92, dark ? 'dark' : 'light').tokens['--dsw-specific-sidebar-fill'] ?? ''
 }
 
+const BLANK = 'rgba(0, 0, 0, 0)'
+
+/** One element's own paint, as a layer of the band. */
+function readPaint(el: Element, pseudo: string | null): CaptionLayer | null {
+  const cs = getComputedStyle(el, pseudo)
+  const bg = cs.backgroundColor === BLANK ? '' : cs.backgroundColor
+  const blur = cs.backdropFilter !== '' && cs.backdropFilter !== 'none' ? cs.backdropFilter : ''
+  if (bg !== '') return { bg, blur }
+  if (blur !== '') return { bg: '', blur }
+  return null
+}
+
+/** An element **and its two pseudo-elements**. The plugin's frost lives on
+ *  `::before` in several places, and 0.1.7 columns carry no
+ *  `--dsh-any-part-blur` underlay at all, so reading only the element itself
+ *  silently drops an entire frosted layer. */
+function readPaints(el: Element): CaptionLayer[] {
+  const out: CaptionLayer[] = []
+  for (const pseudo of [null, '::before', '::after']) {
+    const layer = readPaint(el, pseudo)
+    if (layer !== null) out.push(layer)
+  }
+  return out
+}
+
+/** The column's surface stack, outermost-first.
+ *
+ *  Layers are collected by walking the **ancestor chain** from a hit point, not by
+ *  descending the subtree. A column's real material is often an absolutely
+ *  positioned wrapper: it covers the column geometrically but is not a chain of
+ *  full-width children, so a subtree walk misses it entirely (measured: band 47
+ *  levels brighter than the column below it).
+ *
+ *  `isColumnSpanning` is what keeps content out — the hit point itself may well be
+ *  a message, but a message never covers a fifth of the column's height. */
+function columnLayers(col: Element | null): CaptionLayer[] {
+  if (col === null) return []
+  const base = col.getBoundingClientRect()
+  let best = readPaints(col)
+  for (const x of [base.left + 3, base.left + base.width - 3]) {
+    for (const f of [0.12, 0.3, 0.5, 0.7, 0.88]) {
+      const start: Element | undefined = document.elementsFromPoint(x, base.top + base.height * f).find(n => col.contains(n))
+      if (start === undefined) continue
+      const stack: CaptionLayer[] = []
+      let node: Element | null = start
+      while (node !== null) {
+        if (isColumnSpanning(node.getBoundingClientRect(), base)) stack.push(...readPaints(node))
+        if (node === col) break
+        node = node.parentElement
+      }
+      if (stack.length > best.length) best = stack.reverse()
+    }
+  }
+  return best
+}
+
+/** Read a plugin-owned variable from whichever node actually carries it. The
+ *  `--dsh-any-op-*` variables have moved between `<html>`, `<body>` and the
+ *  columns across versions, so no single node can be assumed. */
+function readPartVar(name: string): string {
+  for (const node of [document.body, document.documentElement, frameEl, centerEl, sidebarEl, rightEl]) {
+    if (node === null || !(node instanceof Element)) continue
+    const value = getComputedStyle(node).getPropertyValue(name).trim()
+    if (value !== '') return value
+  }
+  return ''
+}
+
+/** Paint one band segment from a column's surface stack. */
+function paintSegment(el: HTMLElement, col: Element | null, fallback: string, blurFallback: string): void {
+  const layers = columnLayers(col)
+  el.style.backgroundColor = ''
+  el.style.backgroundImage = layersToBackground(layers, fallback)
+  const blur = layersToBlur(layers, blurFallback)
+  el.style.backdropFilter = blur
+  el.style.setProperty('-webkit-backdrop-filter', blur)
+}
+
 /** Write the caption rule and mark the frame it targets. The frame is the
  *  plugin's own discovery (`discoverParts`), not a guessed hashed class name. The
  *  probe selector is a verified shape: an inline style that mentions the sidebar
  *  token on a body-level span is the desktop preload's caption probe and nothing
- *  else, so no match means no desktop caption and the rule is inert. */
+ *  else, so no match means no desktop caption and the rule is inert.
+ *
+ *  Why the band is not simply tinted with one colour: the host paints `.frame`
+ *  and `.frame::before` with `var(--dsw-specific-sidebar-fill)` — the caption mask
+ *  IS the sidebar's own fill token — while `.centerCol` and `.rightbarCol` paint
+ *  themselves with `var(--dsw-alias-bg-base)`. A single-colour band is therefore
+ *  always wrong for two of the three columns beneath it, and with a wallpaper on
+ *  the band reads as a foreign strip instead of the tops of the columns.
+ *
+ *  So instead of tinting, each segment **copies the column's own surface stack**
+ *  (colour, `background-image` and `backdrop-filter`, element and pseudo-elements)
+ *  onto an overlay sitting exactly above that column. What is copied is the same
+ *  CSS value rather than a guess at how many layers happen to be stacked, so it
+ *  does not depend on sampling timing and does not drift while the sidebar
+ *  animates.
+ *
+ *  Positioning is pure CSS (`anchor()` on the column elements, with the host's
+ *  `--dsh-windows-sidebar-width` and a JS-recorded width as fallbacks). An earlier
+ *  revision held the overlays in place with a `ResizeObserver`, which lags one
+ *  frame behind the open/close animation — the band visibly trailed the sidebar,
+ *  and the sidebar segment kept a stale width, leaving a gap at the top-left.
+ *
+ *  Windows-only: gated on `data-windows-titlebar`, which only the win32 main
+ *  process writes, so darwin keeps the host's `.frame{background:0 0}` behaviour
+ *  untouched. Inert where the plugin is not theming, so a stock install's caption
+ *  keeps the host's own look. */
 function applyNativeCaption(surfaces?: Record<string, string> | null): void {
   if (!document.documentElement.hasAttribute('data-windows-titlebar')) return
   const src = surfaces === undefined ? (paletteTokens() ?? readHostOpacityTokens()) : surfaces
   const fill = captionFill(src)
-  const paint = headerBarPaint(src) || fill
-  const css = fill === '' ? '' : `${WCO_PROBE_SEL}{--dsw-specific-sidebar-fill:transparent}` +
-    `[data-windows-titlebar] .${CAPTION_FRAME_CLASS}::before{` +
-    `background:var(--dsh-any-op-header-bar,${paint})!important;` +
-    `backdrop-filter:var(--dsh-any-blur-header-bar,none);` +
-    `-webkit-backdrop-filter:var(--dsh-any-blur-header-bar,none)}` +
-    `[data-windows-titlebar] .${FLAT_CENTER_CLASS}{border-top-left-radius:0!important}`
+  discoverParts()
+  const cols = [sidebarEl, centerEl, rightEl].filter((el): el is HTMLElement => el !== null)
+
+  if (frameEl !== null && (captionSegs === null || captionSegs[0]?.isConnected !== true)) {
+    document.querySelectorAll(`.${CAPTION_SEG_CLASS}`).forEach(el => el.remove())
+    /** Inserted at the very front of `<body>` with a low z-index: the host's own
+     *  「应用/编辑」 menubar is title-bar UI and must paint above the band.
+     *  Hoisting the overlays' z-index tints that menu grey. */
+    captionSegs = ['left', 'mid'].map(part => {
+      const el = document.createElement('div')
+      el.className = CAPTION_SEG_CLASS
+      el.dataset.part = part
+      document.body.insertBefore(el, document.body.firstChild)
+      return el
+    })
+  }
+
+  if (captionSegs !== null && frameEl !== null) {
+    const sideVar = readPartVar('--dsh-any-op-sidebar') || readPartVar('--dsw-specific-sidebar-fill')
+    const bgVar = readPartVar('--dsh-any-op-bg') || readPartVar('--dsw-alias-bg-base')
+    const blurVar = readPartVar('--dsh-any-part-blur')
+    /** Fallback width, used only when `anchor()` is unavailable AND the host does
+     *  not expose `--dsh-windows-sidebar-width`. */
+    document.documentElement.style.setProperty('--dab-sidebar-w', `${sidebarEl === null ? 0 : sidebarEl.getBoundingClientRect().width}px`)
+    /** `anchor()` is the strong path: the overlays are tied to the column elements
+     *  themselves, so the layout engine keeps them in step with the sidebar's
+     *  open/close animation. Browsers without it drop these declarations wholesale
+     *  and fall back to the variables above. */
+    if (typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('anchor-name: --dab-anchor')) {
+      if (centerEl !== null) centerEl.style.setProperty('anchor-name', '--dab-anchor')
+      if (sidebarEl !== null) sidebarEl.style.setProperty('anchor-name', '--dab-side')
+    }
+    const left = captionSegs[0]
+    const mid = captionSegs[1]
+    if (left !== undefined) paintSegment(left, sidebarEl, sideVar, blurVar)
+    if (mid !== undefined) paintSegment(mid, centerEl, bgVar, blurVar || readPartVar('--dsh-any-part-blur-global'))
+    /** `.centerCol` is rounded 16px at its top-left and that notch shows the
+     *  wallpaper. The patch shares the mid segment's material verbatim and only
+     *  reshapes it with `mask-image` (radial gradient centred on its own
+     *  bottom-right, radius equal to the host's content radius, keeping the
+     *  outside of the arc), so it lines up with the column exactly.
+     *
+     *  This must run AFTER `paintSegment`: reading the mid segment's style before
+     *  it is written picks up the previous pass. */
+    if (captionCorner === null || !captionCorner.isConnected) {
+      captionCorner = document.createElement('div')
+      captionCorner.className = CAPTION_CORNER_CLASS
+      document.body.insertBefore(captionCorner, document.body.firstChild)
+    }
+    if (mid !== undefined) {
+      captionCorner.style.backgroundColor = mid.style.backgroundColor
+      captionCorner.style.backgroundImage = mid.style.backgroundImage
+      captionCorner.style.backdropFilter = mid.style.backdropFilter
+      captionCorner.style.setProperty('-webkit-backdrop-filter', mid.style.getPropertyValue('-webkit-backdrop-filter'))
+    }
+  }
+
+  const css = fill === '' || cols.length === 0 ? '' : `${WCO_PROBE_SEL}{--dsw-specific-sidebar-fill:transparent}` +
+    `[data-windows-titlebar] .${CAPTION_FRAME_CLASS}{background:transparent!important}` +
+    `[data-windows-titlebar] .${CAPTION_FRAME_CLASS}::before{background:transparent!important}` +
+    `[data-windows-titlebar] .${CAPTION_SEG_CLASS}{position:fixed;top:0;height:var(--dsh-windows-titlebar-height,40px);pointer-events:none;z-index:1}` +
+    `[data-windows-titlebar] .${CAPTION_SEG_CLASS}[data-part="left"]{left:0;width:var(--dsh-windows-sidebar-width,var(--dab-sidebar-w,0px));left:anchor(--dab-side left);width:anchor-size(--dab-side width)}` +
+    `[data-windows-titlebar] .${CAPTION_SEG_CLASS}[data-part="mid"]{left:var(--dsh-windows-sidebar-width,var(--dab-sidebar-w,0px));right:0;left:anchor(--dab-anchor left)}` +
+    `[data-windows-titlebar] .${CAPTION_CORNER_CLASS}{position:fixed;left:var(--dsh-windows-sidebar-width,var(--dab-sidebar-w,0px));top:var(--dsh-windows-titlebar-height,40px);left:anchor(--dab-anchor left);top:anchor(--dab-anchor top);` +
+    `width:var(--dsh-windows-content-radius,16px);height:var(--dsh-windows-content-radius,16px);pointer-events:none;z-index:1;` +
+    `-webkit-mask-image:radial-gradient(circle var(--dsh-windows-content-radius,16px) at 100% 100%,transparent 0 calc(var(--dsh-windows-content-radius,16px) - .5px),#000 var(--dsh-windows-content-radius,16px));` +
+    `mask-image:radial-gradient(circle var(--dsh-windows-content-radius,16px) at 100% 100%,transparent 0 calc(var(--dsh-windows-content-radius,16px) - .5px),#000 var(--dsh-windows-content-radius,16px))}`
   const el = ensureWcoStyle()
   if (el.textContent !== css) el.textContent = css
-  discoverParts()
   if (frameEl === null) return
   if (css === '') {
     frameEl.classList.remove(CAPTION_FRAME_CLASS)
+    document.querySelectorAll(`.${CAPTION_SEG_CLASS}`).forEach(node => node.remove())
+    captionSegs = null
+    captionCorner?.remove()
+    captionCorner = null
+    document.documentElement.style.removeProperty('--dab-sidebar-w')
     centerEl?.classList.remove(FLAT_CENTER_CLASS)
   } else {
+    /** The host paints `[data-windows-titlebar] .frame` — and its `::before` —
+     *  with `--dsw-specific-sidebar-fill`. The frame's own layer has to go, or it
+     *  shows through the translucent columns and tints all three with the sidebar
+     *  colour. `::before` is the `-webkit-app-region:drag` caption hot zone: keep
+     *  the element, clear only its background. */
     frameEl.classList.add(CAPTION_FRAME_CLASS)
-    centerEl?.classList.add(FLAT_CENTER_CLASS)
   }
 }
 
@@ -2902,6 +3083,13 @@ export function teardownWp(): void {
   document.querySelectorAll(`.${HEADER_BAR_CLASS}`).forEach(el => el.classList.remove(HEADER_BAR_CLASS))
   headerBarEl = null
   frameEl?.classList.remove(CAPTION_FRAME_CLASS)
+  // The band overlays live on <body>, outside the frame the host owns, so they
+  // have to be torn down explicitly -- nothing else will collect them.
+  document.querySelectorAll(`.${CAPTION_SEG_CLASS}`).forEach(el => el.remove())
+  captionSegs = null
+  captionCorner?.remove()
+  captionCorner = null
+  document.documentElement.style.removeProperty('--dab-sidebar-w')
   document.querySelectorAll(`.${FLAT_CENTER_CLASS}`).forEach(el => el.classList.remove(FLAT_CENTER_CLASS))
   wcoStyleEl?.remove(); wcoStyleEl = null
   document.documentElement.style.removeProperty('--dsh-any-blur-panel')
